@@ -158,6 +158,7 @@ class SettingsScreen extends ConsumerWidget {
                                   final basename = file.path.split(RegExp(r'[/\\]')).last;
                                   return Card(
                                     margin: const EdgeInsets.only(bottom: 8),
+                                    clipBehavior: Clip.antiAlias,
                                     child: ListTile(
                                       leading: const Icon(Icons.insert_drive_file_outlined),
                                       title: Text(basename, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),

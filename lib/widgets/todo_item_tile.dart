@@ -21,21 +21,24 @@ class TodoItemTile extends StatelessWidget {
     final primary = theme.colorScheme.primary;
     final isDone = todo.isCompleted;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
         color: isDone
             ? theme.colorScheme.surfaceContainerLow.withValues(alpha: 0.6)
             : theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDone
-              ? theme.colorScheme.outlineVariant.withValues(alpha: 0.2)
-              : theme.colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
-          width: 1,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isDone
+                ? theme.colorScheme.outlineVariant.withValues(alpha: 0.2)
+                : theme.colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+            width: 1,
+          ),
         ),
-      ),
-      child: ListTile(
+        child: ListTile(
         onTap: onToggle,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: AnimatedContainer(
@@ -79,6 +82,7 @@ class TodoItemTile extends StatelessWidget {
           onPressed: onDelete,
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

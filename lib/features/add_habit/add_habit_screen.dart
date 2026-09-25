@@ -4,18 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/services/notification_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/models/habit.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
+import '../../widgets/reminder_times_picker.dart';
 
-/// SCREEN 3 — Create a habit.
+/// SCREEN 3 — Create or edit a habit.
 class AddHabitScreen extends ConsumerStatefulWidget {
-  const AddHabitScreen({super.key});
+  const AddHabitScreen({super.key, this.habit});
 
-  static Future<void> push(BuildContext context) {
+  final Habit? habit;
+
+  static Future<void> push(BuildContext context, {Habit? habit}) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const AddHabitScreen()),
+      MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
     );
   }
 
@@ -25,8 +30,8 @@ class AddHabitScreen extends ConsumerStatefulWidget {
 
 /// Backward-compatible wrapper so any existing call pushes the full screen page.
 abstract final class AddHabitSheet {
-  static Future<void> show(BuildContext context) {
-    return AddHabitScreen.push(context);
+  static Future<void> show(BuildContext context, {Habit? habit}) {
+    return AddHabitScreen.push(context, habit: habit);
   }
 }
 
@@ -45,6 +50,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   bool _isFixed = false;
   DateTime _startDate = DateTime.now();
   int _accentIndex = 0;
+  List<int> _reminderTimes = [];
   bool _saving = false;
   String? _error;
 
@@ -52,6 +58,33 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   void initState() {
     super.initState();
     _titleController.addListener(() => setState(() {}));
+
+    if (widget.habit != null) {
+      final h = widget.habit!;
+      _titleController.text = h.title;
+      _isFixed = h.isFixed;
+      _startDate = h.startDate;
+      _reminderTimes = List<int>.from(h.reminderTimes);
+
+      final matchIndex = AppAccents.swatches.indexWhere(
+        (s) =>
+            s.id == h.colorValue ||
+            s.dark.toARGB32() == h.colorValue ||
+            s.light.toARGB32() == h.colorValue,
+      );
+      if (matchIndex != -1) {
+        _accentIndex = matchIndex;
+      }
+
+      if (_presets.any((p) => p.days == h.totalDays)) {
+        _days = h.totalDays;
+        _customDays = false;
+      } else {
+        _days = h.totalDays;
+        _customDays = true;
+        _customDaysController.text = h.totalDays.toString();
+      }
+    }
   }
 
   @override
@@ -104,15 +137,38 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
     });
     HapticFeedback.mediumImpact();
 
-    await ref
-        .read(habitsProvider.notifier)
-        .addHabit(
-          title: title,
-          totalDays: days,
-          startDate: _startDate,
-          colorValue: _swatch.id,
-          isFixed: _isFixed,
-        );
+    if (widget.habit != null) {
+      final h = widget.habit!;
+      h.title = title;
+      h.totalDays = days;
+      h.startDate = _startDate;
+      h.colorValue = _swatch.id;
+      h.isFixed = _isFixed;
+      h.reminderTimes = _reminderTimes.toList()..sort();
+
+      await ref.read(habitsProvider.notifier).updateHabit(h);
+      if (_reminderTimes.isNotEmpty) {
+        await NotificationService.instance.requestPermissions();
+        await NotificationService.instance.syncAll(ref.read(habitsProvider));
+      } else {
+        await NotificationService.instance.clearToday(h);
+      }
+    } else {
+      await ref
+          .read(habitsProvider.notifier)
+          .addHabit(
+            title: title,
+            totalDays: days,
+            startDate: _startDate,
+            colorValue: _swatch.id,
+            isFixed: _isFixed,
+            reminderTimes: _reminderTimes,
+          );
+      if (_reminderTimes.isNotEmpty) {
+        await NotificationService.instance.requestPermissions();
+      }
+    }
+
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -128,7 +184,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              _HeaderBar(color: color),
+              _HeaderBar(color: color, isEditing: widget.habit != null),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(
@@ -278,6 +334,17 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                     ),
                     const SizedBox(height: AppTokens.space5),
 
+                    if (NotificationService.instance.isSupported) ...[
+                      _FieldLabel('Daily reminders'),
+                      ReminderTimesPicker(
+                        times: _reminderTimes,
+                        color: color,
+                        onChanged: (times) =>
+                            setState(() => _reminderTimes = times),
+                      ),
+                      const SizedBox(height: AppTokens.space5),
+                    ],
+
                     _FieldLabel('Accent color'),
                     Wrap(
                       spacing: 12,
@@ -320,7 +387,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                 ),
               ),
 
-              // Bottom Create CTA.
+              // Bottom Create / Save CTA.
               Container(
                 padding: const EdgeInsets.fromLTRB(
                   AppTokens.gutter,
@@ -345,8 +412,19 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.auto_awesome_rounded, size: 19),
-                    label: Text(_saving ? 'Creating…' : 'Create habit'),
+                        : Icon(
+                            widget.habit != null
+                                ? Icons.save_rounded
+                                : Icons.auto_awesome_rounded,
+                            size: 19,
+                          ),
+                    label: Text(
+                      _saving
+                          ? (widget.habit != null ? 'Saving…' : 'Creating…')
+                          : (widget.habit != null
+                              ? 'Save changes'
+                              : 'Create habit'),
+                    ),
                   ),
                 ),
               ),
@@ -359,9 +437,10 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
 }
 
 class _HeaderBar extends StatelessWidget {
-  const _HeaderBar({required this.color});
+  const _HeaderBar({required this.color, required this.isEditing});
 
   final Color color;
+  final bool isEditing;
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +473,7 @@ class _HeaderBar extends StatelessWidget {
           ),
           const SizedBox(width: 14),
           Text(
-            'New habit',
+            isEditing ? 'Edit habit' : 'New habit',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
             ),

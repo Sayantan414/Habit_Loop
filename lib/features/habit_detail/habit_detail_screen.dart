@@ -3,13 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/services/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/habit.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/confetti.dart';
+import '../../widgets/extend_habit_dialog.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/progress_ring.dart';
+import '../../widgets/reminder_times_picker.dart';
+import '../add_habit/add_habit_screen.dart';
 
 /// SCREEN 2 — Habit detail and challenge grid.
 ///
@@ -54,6 +58,14 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
     }
   }
 
+  Future<void> _setReminders(Habit habit, List<int> times) async {
+    final hadNone = habit.reminderTimes.isEmpty;
+    await ref.read(habitsProvider.notifier).setReminderTimes(habit, times);
+    if (hadNone && times.isNotEmpty) {
+      await NotificationService.instance.requestPermissions();
+    }
+  }
+
   void _nudge(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -82,6 +94,7 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
             children: [
               _DetailAppBar(
                 title: habit.title,
+                onEdit: () => AddHabitScreen.push(context, habit: habit),
                 onDelete: () => _confirmDelete(habit),
               ),
               Expanded(
@@ -96,9 +109,27 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                     _HeroHeader(habit: habit, color: color),
                     const SizedBox(height: AppTokens.space4),
                     _StatRow(habit: habit, color: color),
+                    if (habit.isFinished) ...[
+                      const SizedBox(height: AppTokens.space4),
+                      _CompletionBanner(
+                        habit: habit,
+                        color: color,
+                        onExtend: () => showExtendHabitDialog(context, ref, habit),
+                      ),
+                    ],
                     if (!habit.isFixed && habit.missedDaysCount > 0) ...[
                       const SizedBox(height: AppTokens.space4),
                       _ExtensionBanner(habit: habit),
+                    ],
+                    if (!habit.isFinished &&
+                        NotificationService.instance.isSupported) ...[
+                      const SizedBox(height: AppTokens.space6),
+                      const SectionHeader(title: 'Daily reminders'),
+                      ReminderTimesPicker(
+                        times: habit.reminderTimes,
+                        color: color,
+                        onChanged: (times) => _setReminders(habit, times),
+                      ),
                     ],
                     const SizedBox(height: AppTokens.space6),
                     SectionHeader(
@@ -186,9 +217,14 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
 }
 
 class _DetailAppBar extends StatelessWidget {
-  const _DetailAppBar({required this.title, required this.onDelete});
+  const _DetailAppBar({
+    required this.title,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final String title;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -221,17 +257,41 @@ class _DetailAppBar extends StatelessWidget {
           PopupMenuButton<String>(
             icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
             onSelected: (value) {
+              if (value == 'edit') onEdit();
               if (value == 'delete') onDelete();
             },
             itemBuilder: (ctx) => [
               PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.edit_rounded,
+                      size: 18,
+                      color: p.textPrimary,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Edit habit',
+                      style: TextStyle(color: p.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'delete',
                 child: Row(
                   children: [
-                    Icon(Icons.delete_outline_rounded,
-                        size: 18, color: p.danger),
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      size: 18,
+                      color: p.danger,
+                    ),
                     const SizedBox(width: 10),
-                    Text('Delete habit', style: TextStyle(color: p.danger)),
+                    Text(
+                      'Delete habit',
+                      style: TextStyle(color: p.danger),
+                    ),
                   ],
                 ),
               ),
@@ -709,6 +769,80 @@ class _DayCell extends StatelessWidget {
       scale: 0.94,
       haptic: true,
       child: Semantics(label: semanticsLabel, child: cell),
+    );
+  }
+}
+
+class _CompletionBanner extends StatelessWidget {
+  const _CompletionBanner({
+    required this.habit,
+    required this.color,
+    required this.onExtend,
+  });
+
+  final Habit habit;
+  final Color color;
+  final VoidCallback onExtend;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(AppTokens.space4),
+      decoration: BoxDecoration(
+        color: p.success.withValues(alpha: p.isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(color: p.success.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: p.success.withValues(alpha: 0.18),
+                ),
+                child: Icon(Icons.emoji_events_rounded, size: 20, color: p.success),
+              ),
+              const SizedBox(width: AppTokens.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Challenge Completed! 🎉',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: p.success,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'You successfully finished all ${habit.totalDays} days of this challenge.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTokens.space4),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onExtend,
+              style: FilledButton.styleFrom(backgroundColor: color),
+              icon: const Icon(Icons.more_time_rounded, size: 18),
+              label: const Text('Extend Challenge'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

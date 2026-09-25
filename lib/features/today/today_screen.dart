@@ -12,6 +12,7 @@ import '../../widgets/pressable.dart';
 import '../../widgets/progress_ring.dart';
 import '../add_habit/add_habit_screen.dart';
 import '../habit_detail/habit_detail_screen.dart';
+import 'completed_habits_screen.dart';
 
 /// SCREEN 1 — Today dashboard.
 ///
@@ -28,10 +29,33 @@ class TodayScreen extends ConsumerStatefulWidget {
 class _TodayScreenState extends ConsumerState<TodayScreen> {
   Future<void> _check(Habit habit, int dayNumber) async {
     final wasAllDone = ref.read(todaySummaryProvider).allDone;
+    final wasFinished = habit.isFinished;
     await ref.read(habitsProvider.notifier).toggleDay(habit, dayNumber);
     final nowAllDone = ref.read(todaySummaryProvider).allDone;
     final sound = ref.read(soundServiceProvider);
-    if (!wasAllDone && nowAllDone) {
+
+    if (!wasFinished && habit.isFinished) {
+      sound.playAllDone();
+      if (mounted) {
+        Confetti.burst(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '🎉 Challenge Completed! "${habit.title}" moved to Completed.',
+                  ),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } else if (!wasAllDone && nowAllDone) {
       sound.playAllDone();
       if (mounted) Confetti.burst(context);
     } else {
@@ -62,35 +86,34 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           if (active.isEmpty && finished.isEmpty)
             _EmptyState(onAdd: () => AddHabitSheet.show(context))
           else ...[
-            if (active.isNotEmpty) ...[
-              SectionHeader(title: "Today's habits", count: active.length),
-              for (final habit in active)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppTokens.space3),
-                  child: HabitCard(
-                    habit: habit,
-                    onTap: () => _openDetail(habit),
-                    onCheckIn: () => _check(habit, habit.todayDayNumber),
-                  ),
+            SectionHeader(
+              title: "Today's habits",
+              count: active.length,
+              trailing: finished.isNotEmpty
+                  ? Pressable(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CompletedHabitsScreen(),
+                        ),
+                      ),
+                      scale: 0.92,
+                      child: TagChip(
+                        label: 'Completed (${finished.length}) ›',
+                        color: AppPalette.of(context).success,
+                        dense: true,
+                      ),
+                    )
+                  : null,
+            ),
+            for (final habit in active)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppTokens.space3),
+                child: HabitCard(
+                  habit: habit,
+                  onTap: () => _openDetail(habit),
+                  onCheckIn: () => _check(habit, habit.todayDayNumber),
                 ),
-            ],
-            if (finished.isNotEmpty) ...[
-              const SizedBox(height: AppTokens.space5),
-              SectionHeader(
-                title: 'Completed challenges',
-                count: finished.length,
-                color: AppPalette.of(context).success,
               ),
-              for (final habit in finished)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppTokens.space3),
-                  child: HabitCard(
-                    habit: habit,
-                    onTap: () => _openDetail(habit),
-                    onCheckIn: null,
-                  ),
-                ),
-            ],
           ],
         ],
       ),
@@ -573,3 +596,5 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+
+

@@ -26,13 +26,14 @@ class HabitAdapter extends TypeAdapter<Habit> {
       completedDays: (fields[6] as List?)?.cast<int>(),
       archived: fields[7] == null ? false : fields[7] as bool,
       isFixed: fields[8] == null ? false : fields[8] as bool,
+      reminderTimes: (fields[9] as List?)?.cast<int>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Habit obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +51,9 @@ class HabitAdapter extends TypeAdapter<Habit> {
       ..writeByte(7)
       ..write(obj.archived)
       ..writeByte(8)
-      ..write(obj.isFixed);
+      ..write(obj.isFixed)
+      ..writeByte(9)
+      ..write(obj.reminderTimes);
   }
 
   @override

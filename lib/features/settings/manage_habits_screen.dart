@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
@@ -8,6 +7,7 @@ import '../../data/models/habit.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
+import '../add_habit/add_habit_screen.dart';
 
 /// Edit or remove existing habits. Reached from Settings → Habits.
 class ManageHabitsScreen extends ConsumerWidget {
@@ -105,8 +105,10 @@ class ManageHabitsScreen extends ConsumerWidget {
                                     ),
                                   ),
                                   Pressable(
-                                    onTap: () =>
-                                        _showEditDialog(context, ref, habit),
+                                    onTap: () => AddHabitScreen.push(
+                                      context,
+                                      habit: habit,
+                                    ),
                                     scale: 0.85,
                                     child: Padding(
                                       padding: const EdgeInsets.all(6),
@@ -137,100 +139,6 @@ class ManageHabitsScreen extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _showEditDialog(BuildContext context, WidgetRef ref, Habit habit) {
-    final titleController = TextEditingController(text: habit.title);
-    final daysController =
-        TextEditingController(text: habit.totalDays.toString());
-    var selectedColorValue = habit.colorValue;
-
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final brightness = Theme.of(ctx).brightness;
-          return AlertDialog(
-            title: const Text('Edit habit'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: titleController,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(labelText: 'Title'),
-                  ),
-                  const SizedBox(height: AppTokens.space4),
-                  TextField(
-                    controller: daysController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(labelText: 'Target days'),
-                  ),
-                  const SizedBox(height: AppTokens.space4),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final swatch in AppAccents.swatches)
-                        Pressable(
-                          onTap: () => setDialogState(
-                            () => selectedColorValue = swatch.id,
-                          ),
-                          scale: 0.88,
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: selectedColorValue == swatch.id
-                                    ? AppAccents.resolve(swatch.id, brightness)
-                                    : Colors.transparent,
-                                width: 2,
-                              ),
-                            ),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color:
-                                    AppAccents.resolve(swatch.id, brightness),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final newTitle = titleController.text.trim();
-                  final newDays = int.tryParse(daysController.text.trim());
-                  if (newTitle.isEmpty || newDays == null || newDays < 1) return;
-
-                  habit.title = newTitle;
-                  habit.totalDays = newDays;
-                  habit.colorValue = selectedColorValue;
-                  await ref.read(habitsProvider.notifier).updateHabit(habit);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

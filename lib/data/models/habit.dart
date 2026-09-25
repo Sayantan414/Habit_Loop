@@ -16,8 +16,10 @@ class Habit extends HiveObject {
     List<int>? completedDays,
     this.archived = false,
     this.isFixed = false,
+    List<int>? reminderTimes,
   }) : createdAt = createdAt ?? DateTime.now(),
-       completedDays = completedDays ?? <int>[];
+       completedDays = completedDays ?? <int>[],
+       reminderTimes = reminderTimes ?? <int>[];
 
   @HiveField(0)
   String id;
@@ -53,6 +55,11 @@ class Habit extends HiveObject {
   /// False (Extended) if missed days add +1 extra day to complete the target.
   @HiveField(8)
   bool isFixed;
+
+  /// Daily reminder times, stored as minutes after midnight (e.g. 07:30 = 450).
+  /// Empty means no reminders for this habit.
+  @HiveField(9)
+  List<int> reminderTimes;
 
   /// 1-based day number for [date], relative to [startDate].
   int dayNumberFor(DateTime date) {
@@ -122,6 +129,7 @@ class Habit extends HiveObject {
       'completedDays': completedDays,
       'archived': archived,
       'isFixed': isFixed,
+      'reminderTimes': reminderTimes,
     };
   }
 
@@ -140,6 +148,9 @@ class Habit extends HiveObject {
           .toList(),
       archived: json['archived'] as bool? ?? false,
       isFixed: json['isFixed'] as bool? ?? false,
+      reminderTimes: (json['reminderTimes'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
     );
   }
 }

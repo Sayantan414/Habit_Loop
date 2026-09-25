@@ -4,6 +4,7 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 
 import 'app.dart';
 import 'core/providers.dart';
+import 'core/services/notification_service.dart';
 import 'core/services/settings_service.dart';
 import 'data/models/habit.dart';
 import 'data/repositories/habit_repository.dart';
@@ -28,6 +29,7 @@ void main() async {
   final noteRepository = NoteRepository(noteBox);
 
   final settingsService = await SettingsService.create();
+  await NotificationService.instance.init();
 
   runApp(
     ProviderScope(

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/habit.dart';
 import '../data/repositories/habit_repository.dart';
+import 'services/notification_service.dart';
 import 'services/settings_service.dart';
 import 'services/sound_service.dart';
 import 'services/widget_service.dart';
@@ -74,6 +75,7 @@ final soundEnabledProvider = StateNotifierProvider<SoundEnabledNotifier, bool>((
 class HabitsNotifier extends StateNotifier<List<Habit>> {
   HabitsNotifier(this._repo, this._todoRepo, this._noteRepo, this._ref) : super(_repo.getAll()) {
     WidgetService.updateToday(state);
+    NotificationService.instance.syncAll(state);
   }
 
   final HabitRepository _repo;
@@ -84,7 +86,11 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
   void _refresh() {
     state = _repo.getAll();
     WidgetService.updateToday(state);
+    NotificationService.instance.syncAll(state);
   }
+
+  /// Re-plans reminders, e.g. when the app returns to the foreground on a new day.
+  void refreshReminders() => NotificationService.instance.syncAll(state);
 
   Future<void> addHabit({
     required String title,
@@ -92,6 +98,7 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     required DateTime startDate,
     required int colorValue,
     bool isFixed = false,
+    List<int> reminderTimes = const [],
   }) async {
     final habit = Habit(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -100,6 +107,7 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
       startDate: startDate,
       colorValue: colorValue,
       isFixed: isFixed,
+      reminderTimes: reminderTimes.toList()..sort(),
     );
     await _repo.add(habit);
     _refresh();
@@ -115,12 +123,29 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     await toggleDay(habit, habit.todayDayNumber);
   }
 
+  /// Handles the "Mark as done" button on a reminder. Never un-checks.
+  Future<bool> markDoneFromReminder(String habitId) async {
+    final habit = _repo.getById(habitId);
+    if (habit == null || habit.archived || !habit.isActiveToday) return false;
+    if (habit.isCompletedToday) return false;
+    await toggleToday(habit);
+    return true;
+  }
+
+  Future<void> setReminderTimes(Habit habit, List<int> minutes) async {
+    await NotificationService.instance.clearToday(habit);
+    habit.reminderTimes = minutes.toSet().toList()..sort();
+    await updateHabit(habit);
+  }
+
   Future<void> updateHabit(Habit habit) async {
     await _repo.update(habit);
     _refresh();
   }
 
   Future<void> deleteHabit(String id) async {
+    final habit = _repo.getById(id);
+    if (habit != null) await NotificationService.instance.clearToday(habit);
     await _repo.delete(id);
     _refresh();
   }
@@ -246,10 +271,10 @@ final completedTodosProvider = Provider<List<Todo>>((ref) {
     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 });
 
-/// Active (not archived, still within their day range) habits.
+/// Active (not archived, ongoing/un-finished, still within their day range) habits.
 final activeHabitsProvider = Provider<List<Habit>>((ref) {
   final habits = ref.watch(habitsProvider);
-  return habits.where((h) => !h.archived && h.isActiveToday).toList()
+  return habits.where((h) => !h.archived && h.isActiveToday && !h.isFinished).toList()
     ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 });
 

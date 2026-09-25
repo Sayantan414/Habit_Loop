@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../data/models/habit.dart';
 import 'glass_card.dart';
-import 'progress_ring.dart';
 
 /// Habit row on the Today dashboard.
 ///
@@ -78,12 +77,6 @@ class HabitCard extends StatelessWidget {
                           color: p.textSecondary,
                           dense: true,
                         ),
-                        if (!habit.isFixed && habit.missedDaysCount > 0)
-                          TagChip(
-                            label: '+${habit.missedDaysCount} missed',
-                            color: p.textTertiary,
-                            dense: true,
-                          ),
                       ],
                     ),
                   ],
@@ -95,27 +88,6 @@ class HabitCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _MiniDayStrip(habit: habit, color: color),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: ProgressBar(
-                  value: habit.progress,
-                  color: p.accent,
-                  height: 4,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '${(habit.progress * 100).round()}%',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: p.textTertiary,
-                  fontWeight: FontWeight.w500,
-                  fontFeatures: AppTypography.tabular,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -366,7 +338,7 @@ class _DayDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double size = 11;
+    const double size = 16;
 
     final Color? fill;
     final Border? border;
@@ -399,6 +371,15 @@ class _DayDot extends StatelessWidget {
         color: fill,
         border: border,
       ),
+      child: isDone
+          ? const Center(
+              child: Icon(
+                Icons.check_rounded,
+                size: 11,
+                color: Colors.white,
+              ),
+            )
+          : null,
     );
   }
 }

@@ -224,24 +224,28 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                     const SizedBox(height: AppTokens.space5),
 
                     _FieldLabel('Habit mode'),
-                    _ModeTile(
-                      title: 'Extended Mode',
-                      subtitle:
-                          'Missing a day extends total target by +1 day until finished.',
-                      icon: Icons.all_inclusive_rounded,
-                      selected: !_isFixed,
-                      color: color,
-                      onTap: () => setState(() => _isFixed = false),
-                    ),
-                    const SizedBox(height: AppTokens.space2),
-                    _ModeTile(
-                      title: 'Fixed Mode',
-                      subtitle:
-                          'Strict timeline duration. Timeline does not extend on missed days.',
-                      icon: Icons.timer_rounded,
-                      selected: _isFixed,
-                      color: color,
-                      onTap: () => setState(() => _isFixed = true),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ModeTile(
+                            title: 'Extended Mode',
+                            icon: Icons.all_inclusive_rounded,
+                            selected: !_isFixed,
+                            color: color,
+                            onTap: () => setState(() => _isFixed = false),
+                          ),
+                        ),
+                        const SizedBox(width: AppTokens.space2),
+                        Expanded(
+                          child: _ModeTile(
+                            title: 'Fixed Mode',
+                            icon: Icons.timer_rounded,
+                            selected: _isFixed,
+                            color: color,
+                            onTap: () => setState(() => _isFixed = true),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppTokens.space5),
 
@@ -506,7 +510,6 @@ class _FieldLabel extends StatelessWidget {
 class _ModeTile extends StatelessWidget {
   const _ModeTile({
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.selected,
     required this.color,
@@ -514,7 +517,6 @@ class _ModeTile extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
   final IconData icon;
   final bool selected;
   final Color color;
@@ -530,7 +532,7 @@ class _ModeTile extends StatelessWidget {
       child: AnimatedContainer(
         duration: AppTokens.base,
         curve: AppTokens.emphasized,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: selected
               ? color.withValues(alpha: p.isDark ? 0.18 : 0.12)
@@ -542,37 +544,25 @@ class _ModeTile extends StatelessWidget {
           ),
         ),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
-              size: 20,
+              size: 18,
               color: selected ? color : p.textTertiary,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: selected ? color : p.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 11,
-                      color: p.textSecondary,
-                    ),
-                  ),
-                ],
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: selected ? color : p.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (selected)
-              Icon(Icons.check_circle_rounded, size: 18, color: color),
           ],
         ),
       ),

@@ -8,16 +8,40 @@ import '../../widgets/app_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import '../add_habit/add_habit_screen.dart';
+import '../habit_detail/habit_detail_screen.dart';
+
+enum _HabitFilter { all, ongoing, completed }
 
 /// Edit or remove existing habits. Reached from Settings → Habits.
-class ManageHabitsScreen extends ConsumerWidget {
+class ManageHabitsScreen extends ConsumerStatefulWidget {
   const ManageHabitsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ManageHabitsScreen> createState() => _ManageHabitsScreenState();
+}
+
+class _ManageHabitsScreenState extends ConsumerState<ManageHabitsScreen> {
+  _HabitFilter _filter = _HabitFilter.all;
+
+  @override
+  Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
     final habits = ref.watch(habitsProvider);
+
+    final filteredHabits = habits.where((h) {
+      switch (_filter) {
+        case _HabitFilter.all:
+          return true;
+        case _HabitFilter.ongoing:
+          return !h.isFinished;
+        case _HabitFilter.completed:
+          return h.isFinished;
+      }
+    }).toList();
+
+    final ongoingCount = habits.where((h) => !h.isFinished).length;
+    final completedCount = habits.where((h) => h.isFinished).length;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -40,19 +64,84 @@ class ManageHabitsScreen extends ConsumerWidget {
                           color: p.isDark ? p.surfaceGlassHi : p.surface,
                           border: Border.all(color: p.stroke),
                         ),
-                        child: Icon(Icons.arrow_back_rounded,
-                            size: 20, color: p.textPrimary),
+                        child: Icon(
+                          Icons.arrow_back_rounded,
+                          size: 20,
+                          color: p.textPrimary,
+                        ),
                       ),
                     ),
                     const SizedBox(width: AppTokens.space3),
-                    Text('Manage habits',
-                        style: theme.textTheme.headlineSmall),
+                    Expanded(
+                      child: Text(
+                        'Manage habits',
+                        style: theme.textTheme.headlineSmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    PopupMenuButton<_HabitFilter>(
+                      initialValue: _filter,
+                      onSelected: (filter) => setState(() => _filter = filter),
+                      color: p.isDark ? p.surfaceHigh : p.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                        side: BorderSide(color: p.stroke),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: p.isDark ? p.surfaceGlassHi : p.surface,
+                          borderRadius:
+                              BorderRadius.circular(AppTokens.radiusSm),
+                          border: Border.all(color: p.stroke),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _filter == _HabitFilter.all
+                                  ? 'All'
+                                  : _filter == _HabitFilter.ongoing
+                                      ? 'Ongoing'
+                                      : 'Completed',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: p.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 16,
+                              color: p.textSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: _HabitFilter.all,
+                          child: Text('All (${habits.length})'),
+                        ),
+                        PopupMenuItem(
+                          value: _HabitFilter.ongoing,
+                          child: Text('Ongoing ($ongoingCount)'),
+                        ),
+                        PopupMenuItem(
+                          value: _HabitFilter.completed,
+                          child: Text('Completed ($completedCount)'),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               Expanded(
-                child: habits.isEmpty
-                    ? const _EmptyManage()
+                child: filteredHabits.isEmpty
+                    ? _EmptyManage(filter: _filter)
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(
                           AppTokens.gutter,
@@ -60,11 +149,12 @@ class ManageHabitsScreen extends ConsumerWidget {
                           AppTokens.gutter,
                           AppTokens.space8,
                         ),
-                        itemCount: habits.length,
+                        itemCount: filteredHabits.length,
                         itemBuilder: (context, index) {
-                          final habit = habits[index];
+                          final habit = filteredHabits[index];
                           final color =
                               AppAccents.of(context, habit.colorValue);
+                          final isCompleted = habit.isFinished;
 
                           return Padding(
                             padding: const EdgeInsets.only(
@@ -73,6 +163,18 @@ class ManageHabitsScreen extends ConsumerWidget {
                             child: GlassCard(
                               accent: color,
                               padding: const EdgeInsets.all(AppTokens.space4),
+                              onTap: isCompleted
+                                  ? () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => HabitDetailScreen(
+                                            habitId: habit.id,
+                                          ),
+                                        ),
+                                      )
+                                  : () => AddHabitScreen.push(
+                                        context,
+                                        habit: habit,
+                                      ),
                               child: Row(
                                 children: [
                                   Container(
@@ -89,11 +191,44 @@ class ManageHabitsScreen extends ConsumerWidget {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          habit.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: theme.textTheme.titleMedium,
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                habit.title,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style:
+                                                    theme.textTheme.titleMedium,
+                                              ),
+                                            ),
+                                            if (isCompleted) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: p.success
+                                                      .withValues(alpha: 0.16),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  'Completed',
+                                                  style: theme
+                                                      .textTheme.labelSmall
+                                                      ?.copyWith(
+                                                    fontSize: 10,
+                                                    color: p.success,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
@@ -104,21 +239,43 @@ class ManageHabitsScreen extends ConsumerWidget {
                                       ],
                                     ),
                                   ),
-                                  Pressable(
-                                    onTap: () => AddHabitScreen.push(
-                                      context,
-                                      habit: habit,
+                                  if (isCompleted)
+                                    Pressable(
+                                      onTap: () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => HabitDetailScreen(
+                                            habitId: habit.id,
+                                          ),
+                                        ),
+                                      ),
+                                      scale: 0.85,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(6),
+                                        child: Icon(
+                                          Icons.chevron_right_rounded,
+                                          size: 20,
+                                          color: p.textSecondary,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Pressable(
+                                      onTap: () => AddHabitScreen.push(
+                                        context,
+                                        habit: habit,
+                                      ),
+                                      scale: 0.85,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(6),
+                                        child: Icon(
+                                          Icons.edit_rounded,
+                                          size: 18,
+                                          color: p.textSecondary,
+                                        ),
+                                      ),
                                     ),
-                                    scale: 0.85,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Icon(Icons.edit_rounded,
-                                          size: 18, color: p.textSecondary),
-                                    ),
-                                  ),
                                   Pressable(
-                                    onTap: () =>
-                                        _confirmDelete(context, ref, habit),
+                                    onTap: () => _confirmDelete(context, habit),
                                     scale: 0.85,
                                     child: Padding(
                                       padding: const EdgeInsets.all(6),
@@ -143,7 +300,7 @@ class ManageHabitsScreen extends ConsumerWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, WidgetRef ref, Habit habit) {
+  void _confirmDelete(BuildContext context, Habit habit) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -173,12 +330,20 @@ class ManageHabitsScreen extends ConsumerWidget {
 }
 
 class _EmptyManage extends StatelessWidget {
-  const _EmptyManage();
+  const _EmptyManage({this.filter = _HabitFilter.all});
+
+  final _HabitFilter filter;
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
+
+    final String message = filter == _HabitFilter.ongoing
+        ? 'No ongoing habits found.'
+        : filter == _HabitFilter.completed
+            ? 'No completed habits found.'
+            : 'Habits you create on the Today tab show up here.';
 
     return Center(
       child: Padding(
@@ -188,10 +353,10 @@ class _EmptyManage extends StatelessWidget {
           children: [
             Icon(Icons.inbox_rounded, size: 48, color: p.textTertiary),
             const SizedBox(height: AppTokens.space4),
-            Text('No habits yet', style: theme.textTheme.headlineSmall),
+            Text('No habits found', style: theme.textTheme.headlineSmall),
             const SizedBox(height: AppTokens.space2),
             Text(
-              'Habits you create on the Today tab show up here.',
+              message,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),

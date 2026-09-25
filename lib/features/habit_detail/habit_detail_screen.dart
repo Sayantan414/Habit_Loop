@@ -834,11 +834,29 @@ class _CompletionBanner extends StatelessWidget {
           const SizedBox(height: AppTokens.space4),
           SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
+            child: OutlinedButton.icon(
               onPressed: onExtend,
-              style: FilledButton.styleFrom(backgroundColor: color),
-              icon: const Icon(Icons.more_time_rounded, size: 18),
-              label: const Text('Extend Challenge'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: color,
+                side: BorderSide(
+                  color: color.withValues(alpha: 0.5),
+                  width: 1.2,
+                ),
+                backgroundColor:
+                    color.withValues(alpha: p.isDark ? 0.10 : 0.06),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                ),
+              ),
+              icon: Icon(Icons.more_time_rounded, size: 18, color: color),
+              label: Text(
+                'Extend Challenge',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],

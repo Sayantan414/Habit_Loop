@@ -21,7 +21,6 @@ class SettingsScreen extends ConsumerWidget {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
     final themeMode = ref.watch(themeModeProvider);
-    final soundEnabled = ref.watch(soundEnabledProvider);
 
     return SafeArea(
       bottom: false,
@@ -98,42 +97,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppTokens.space5),
 
-          const SectionHeader(title: 'Feedback'),
-          GlassCard(
-            padding: const EdgeInsets.all(AppTokens.space4),
-            child: Row(
-              children: [
-                _RowIcon(
-                  icon: soundEnabled
-                      ? Icons.volume_up_rounded
-                      : Icons.volume_off_rounded,
-                  color: p.success,
-                ),
-                const SizedBox(width: AppTokens.space3),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Sound & haptics',
-                          style: theme.textTheme.titleMedium),
-                      Text(
-                        'Click and vibrate on every check-in.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: soundEnabled,
-                  onChanged: (value) {
-                    HapticFeedback.selectionClick();
-                    ref.read(soundEnabledProvider.notifier).setEnabled(value);
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppTokens.space5),
+
 
           const SectionHeader(title: 'Habits'),
           GlassCard(

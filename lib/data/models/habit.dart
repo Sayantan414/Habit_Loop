@@ -15,8 +15,9 @@ class Habit extends HiveObject {
     DateTime? createdAt,
     List<int>? completedDays,
     this.archived = false,
-  })  : createdAt = createdAt ?? DateTime.now(),
-        completedDays = completedDays ?? <int>[];
+    this.isFixed = false,
+  }) : createdAt = createdAt ?? DateTime.now(),
+       completedDays = completedDays ?? <int>[];
 
   @HiveField(0)
   String id;
@@ -24,7 +25,7 @@ class Habit extends HiveObject {
   @HiveField(1)
   String title;
 
-  /// How many days this habit challenge runs for (e.g. 21, 30, 66).
+  /// How many days this habit challenge runs for (e.g. 21, 30, 60).
   @HiveField(2)
   int totalDays;
 
@@ -48,6 +49,11 @@ class Habit extends HiveObject {
   @HiveField(7)
   bool archived;
 
+  /// True if the habit has a fixed duration (missed days do not extend the end date).
+  /// False (Extended) if missed days add +1 extra day to complete the target.
+  @HiveField(8)
+  bool isFixed;
+
   /// 1-based day number for [date], relative to [startDate].
   int dayNumberFor(DateTime date) {
     final start = DateTime(startDate.year, startDate.month, startDate.day);
@@ -69,27 +75,35 @@ class Habit extends HiveObject {
     return count;
   }
 
-  /// Total target days including +1 extra day added at the end for each missed past day.
-  int get effectiveTotalDays => totalDays + missedDaysCount;
+  /// Total target days including +1 extra day added at the end for each missed past day (if Extended mode).
+  int get effectiveTotalDays =>
+      isFixed ? totalDays : (totalDays + missedDaysCount);
 
   /// Whether today falls within the habit's active day range.
-  bool get isActiveToday => todayDayNumber >= 1 && todayDayNumber <= effectiveTotalDays;
+  bool get isActiveToday =>
+      todayDayNumber >= 1 && todayDayNumber <= effectiveTotalDays;
 
   bool get isCompletedToday => completedDays.contains(todayDayNumber);
 
   bool isDayCompleted(int dayNumber) => completedDays.contains(dayNumber);
 
-  /// True once every day in the challenge has been checked off.
-  bool get isFinished => completedDays.length >= effectiveTotalDays;
+  /// True once the target number of days has been completed OR (for Fixed mode) when duration expires.
+  bool get isFinished =>
+      completedDays.length >= totalDays ||
+      (isFixed && todayDayNumber > totalDays);
 
-  double get progress => effectiveTotalDays == 0 ? 0 : (completedDays.length / effectiveTotalDays).clamp(0.0, 1.0);
+  /// Progress towards completing the target number of days (totalDays).
+  double get progress =>
+      totalDays == 0 ? 0 : (completedDays.length / totalDays).clamp(0.0, 1.0);
 
   /// Current consecutive streak counting back from today (or from the
   /// last active day if the challenge already ended).
   int get currentStreak {
     final done = completedDays.toSet();
     var streak = 0;
-    var day = todayDayNumber > effectiveTotalDays ? effectiveTotalDays : todayDayNumber;
+    var day = todayDayNumber > effectiveTotalDays
+        ? effectiveTotalDays
+        : todayDayNumber;
     while (day >= 1 && done.contains(day)) {
       streak++;
       day--;
@@ -107,6 +121,7 @@ class Habit extends HiveObject {
       'createdAt': createdAt.toIso8601String(),
       'completedDays': completedDays,
       'archived': archived,
+      'isFixed': isFixed,
     };
   }
 
@@ -117,9 +132,14 @@ class Habit extends HiveObject {
       totalDays: json['totalDays'] as int,
       startDate: DateTime.parse(json['startDate'] as String),
       colorValue: json['colorValue'] as int,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'] as String) : null,
-      completedDays: (json['completedDays'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList(),
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      completedDays: (json['completedDays'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
       archived: json['archived'] as bool? ?? false,
+      isFixed: json['isFixed'] as bool? ?? false,
     );
   }
 }

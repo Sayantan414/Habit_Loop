@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
-import 'features/today/today_screen.dart';
+import 'features/shell/app_shell.dart';
 
 class HabitLoopApp extends ConsumerWidget {
   const HabitLoopApp({super.key});
@@ -18,7 +18,7 @@ class HabitLoopApp extends ConsumerWidget {
       themeMode: themeMode,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      home: const TodayScreen(),
+      home: const AppShell(),
     );
   }
 }

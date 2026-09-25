@@ -3,280 +3,401 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import '../../core/theme/app_theme.dart';
+import '../../widgets/glass_card.dart';
+import '../../widgets/pressable.dart';
 import 'manage_habits_screen.dart';
 
+/// SCREEN 6 — Settings and data backup.
+///
+/// Grouped glass panels instead of a flat list: appearance, feedback, habits,
+/// then the data tools. Destructive-adjacent actions (import, raw JSON) are
+/// last and visually cooler than the rest.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
     final themeMode = ref.watch(themeModeProvider);
     final soundEnabled = ref.watch(soundEnabledProvider);
-    final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.gutter,
+          AppTokens.space2,
+          AppTokens.gutter,
+          AppTokens.navClearance,
+        ),
         children: [
-          _SectionHeader('Habits & Routines'),
-          ListTile(
-            leading: const Icon(Icons.tune_rounded),
-            title: const Text('Manage Habits'),
-            subtitle: const Text('Edit titles, target days, color themes, or delete habits'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ManageHabitsScreen()),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _SectionHeader('Appearance'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), label: Text('Light')),
-                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), label: Text('Dark')),
-                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto_outlined), label: Text('System')),
-              ],
-              selected: {themeMode},
-              onSelectionChanged: (selection) {
-                ref.read(themeModeProvider.notifier).setThemeMode(selection.first);
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-          _SectionHeader('Sound & haptics'),
-          SwitchListTile(
-            title: const Text('Check-in sound'),
-            subtitle: const Text('Play a sound and vibration when you check off a habit'),
-            value: soundEnabled,
-            onChanged: (value) => ref.read(soundEnabledProvider.notifier).setEnabled(value),
-          ),
-          const SizedBox(height: 8),
-          _SectionHeader('Data Backup & Restore (JSON)'),
-          ListTile(
-            leading: const Icon(Icons.download_rounded),
-            title: const Text('Export JSON Backup File'),
-            subtitle: const Text('Save full app backup (Habits, To-Dos & Notes) to Habit Loop > Backup'),
-            onTap: () async {
-              try {
-                final backupService = ref.read(backupServiceProvider);
-                final savedPath = await ref.read(habitsProvider.notifier).exportBackupToFile(backupService);
-                if (savedPath != null && context.mounted) {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Row(
-                        children: [
-                          Icon(Icons.check_circle_outline_rounded, color: Colors.green),
-                          SizedBox(width: 10),
-                          Text('Backup Saved!'),
-                        ],
-                      ),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
+          Text('Settings', style: theme.textTheme.headlineLarge),
+          const SizedBox(height: 2),
+          Text('Make the loop yours.', style: theme.textTheme.bodySmall),
+          const SizedBox(height: AppTokens.space5),
+
+          const SectionHeader(title: 'Appearance'),
+          GlassCard(
+            padding: const EdgeInsets.all(AppTokens.space4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _RowIcon(icon: Icons.palette_rounded, color: p.accentAlt),
+                    const SizedBox(width: AppTokens.space3),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Your backup JSON file has been saved to:'),
-                          const SizedBox(height: 8),
-                          SelectableText(
-                            savedPath,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Keep this file safe in Habit Loop / Backup. It contains all your habits and to-do list items!',
-                            style: TextStyle(fontSize: 12),
+                          Text('Theme', style: theme.textTheme.titleMedium),
+                          Text(
+                            'Midnight glass or porcelain light.',
+                            style: theme.textTheme.bodySmall,
                           ),
                         ],
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: savedPath));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('File path copied to clipboard')),
-                            );
-                          },
-                          child: const Text('Copy Path'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('OK'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to save file: $e')),
-                  );
-                }
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.folder_open_rounded),
-            title: const Text('Import JSON Backup File'),
-            subtitle: const Text('Pick a backup .json file to restore all habits and to-dos'),
-            onTap: () async {
-              try {
-                final backupService = ref.read(backupServiceProvider);
-                final autoFiles = await backupService.getAvailableBackupFiles();
-
-                if (autoFiles.isNotEmpty && context.mounted) {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Row(
-                        children: [
-                          Icon(Icons.history_rounded, color: Colors.blue),
-                          SizedBox(width: 8),
-                          Text('Select Backup File'),
-                        ],
-                      ),
-                      content: SizedBox(
-                        width: double.maxFinite,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Found backup files in Habit Loop / Backup:',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            const SizedBox(height: 12),
-                            Flexible(
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: autoFiles.length,
-                                itemBuilder: (context, i) {
-                                  final file = autoFiles[i];
-                                  final basename = file.path.split(RegExp(r'[/\\]')).last;
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: ListTile(
-                                      leading: const Icon(Icons.insert_drive_file_outlined),
-                                      title: Text(basename, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                                      trailing: TextButton(
-                                        child: const Text('Restore'),
-                                        onPressed: () async {
-                                          final content = await backupService.readJsonFromFile(file);
-                                          if (content != null && content.isNotEmpty) {
-                                            await ref.read(habitsProvider.notifier).importJson(content);
-                                            if (ctx.mounted) Navigator.pop(ctx);
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('🎉 Habits & To-Dos restored successfully!'),
-                                                  backgroundColor: Colors.green,
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        },
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            final restored = await ref.read(habitsProvider.notifier).importBackupFromFile(backupService);
-                            if (restored && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('🎉 Habits & To-Dos restored successfully!'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            }
-                          },
-                          child: const Text('Browse File Manager...'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
-                    ),
-                  );
-                } else {
-                  final restored = await ref.read(habitsProvider.notifier).importBackupFromFile(backupService);
-                  if (restored && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('🎉 Habits & To-Dos restored successfully!'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to import backup file: $e')),
-                  );
-                }
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.code_rounded),
-            title: const Text('View & Copy Raw JSON'),
-            subtitle: const Text('Inspect raw JSON data or copy to clipboard manually'),
-            onTap: () {
-              final jsonStr = ref.read(habitsProvider.notifier).exportJson();
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Full App Data (JSON)'),
-                  content: SizedBox(
-                    width: double.maxFinite,
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        jsonStr,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                      ),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: jsonStr));
-                        Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('JSON data copied to clipboard!')),
-                        );
-                      },
-                      child: const Text('Copy JSON'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Close'),
                     ),
                   ],
                 ),
+                const SizedBox(height: AppTokens.space4),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<ThemeMode>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        icon: Icon(Icons.light_mode_rounded, size: 17),
+                        label: Text('Light'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        icon: Icon(Icons.dark_mode_rounded, size: 17),
+                        label: Text('Dark'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.system,
+                        icon: Icon(Icons.brightness_auto_rounded, size: 17),
+                        label: Text('System'),
+                      ),
+                    ],
+                    selected: {themeMode},
+                    onSelectionChanged: (selection) {
+                      HapticFeedback.selectionClick();
+                      ref
+                          .read(themeModeProvider.notifier)
+                          .setThemeMode(selection.first);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTokens.space5),
+
+          const SectionHeader(title: 'Feedback'),
+          GlassCard(
+            padding: const EdgeInsets.all(AppTokens.space4),
+            child: Row(
+              children: [
+                _RowIcon(
+                  icon: soundEnabled
+                      ? Icons.volume_up_rounded
+                      : Icons.volume_off_rounded,
+                  color: p.success,
+                ),
+                const SizedBox(width: AppTokens.space3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sound & haptics',
+                          style: theme.textTheme.titleMedium),
+                      Text(
+                        'Click and vibrate on every check-in.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: soundEnabled,
+                  onChanged: (value) {
+                    HapticFeedback.selectionClick();
+                    ref.read(soundEnabledProvider.notifier).setEnabled(value);
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTokens.space5),
+
+          const SectionHeader(title: 'Habits'),
+          GlassCard(
+            padding: EdgeInsets.zero,
+            child: _SettingsRow(
+              icon: Icons.tune_rounded,
+              color: p.accent,
+              title: 'Manage habits',
+              subtitle: 'Rename, retarget, recolor or delete',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ManageHabitsScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppTokens.space5),
+
+          const SectionHeader(title: 'Data backup & restore'),
+          GlassCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                _SettingsRow(
+                  icon: Icons.ios_share_rounded,
+                  color: p.success,
+                  title: 'Export JSON file',
+                  subtitle: 'Habits, to-dos and notes → Habit Loop / Backup',
+                  onTap: () => _export(context, ref),
+                ),
+                _Divider(),
+                _SettingsRow(
+                  icon: Icons.download_rounded,
+                  color: p.accent,
+                  title: 'Import JSON file',
+                  subtitle: 'Restore everything from a backup file',
+                  onTap: () => _import(context, ref),
+                ),
+                _Divider(),
+                _SettingsRow(
+                  icon: Icons.data_object_rounded,
+                  color: p.textSecondary,
+                  title: 'View raw JSON',
+                  subtitle: 'Inspect or copy the data by hand',
+                  onTap: () => _viewRaw(context, ref),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTokens.space6),
+
+          Center(
+            child: Column(
+              children: [
+                Icon(Icons.loop_rounded, size: 22, color: p.textTertiary),
+                const SizedBox(height: AppTokens.space2),
+                Text(
+                  'Habit Loop',
+                  style: theme.textTheme.labelLarge
+                      ?.copyWith(color: p.textSecondary),
+                ),
+                Text(
+                  'Build your streaks, one day at a time.',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: p.textTertiary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------- data tools
+
+  Future<void> _export(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final backupService = ref.read(backupServiceProvider);
+      final savedPath =
+          await ref.read(habitsProvider.notifier).exportBackupToFile(backupService);
+      if (savedPath == null || !context.mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.check_circle_rounded,
+                  color: AppPalette.of(ctx).success, size: 22),
+              const SizedBox(width: 10),
+              const Text('Backup saved'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Your backup file was written to:'),
+              const SizedBox(height: AppTokens.space2),
+              SelectableText(
+                savedPath,
+                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppPalette.of(ctx).textPrimary,
+                    ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: savedPath));
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('File path copied')),
+                );
+              },
+              child: const Text('Copy path'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    }
+  }
+
+  Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final backupService = ref.read(backupServiceProvider);
+      final files = await backupService.getAvailableBackupFiles();
+
+      if (files.isEmpty) {
+        final restored = await ref
+            .read(habitsProvider.notifier)
+            .importBackupFromFile(backupService);
+        if (restored) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Backup restored 🎉')),
+          );
+        }
+        return;
+      }
+
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Select a backup'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Found in Habit Loop / Backup:',
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
+                const SizedBox(height: AppTokens.space3),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: files.length,
+                    itemBuilder: (context, i) {
+                      final file = files[i];
+                      final name = file.path.split(RegExp(r'[/\\]')).last;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          Icons.description_outlined,
+                          color: AppPalette.of(ctx).accent,
+                        ),
+                        title: Text(
+                          name,
+                          style: Theme.of(ctx).textTheme.titleSmall,
+                        ),
+                        trailing: const Text('Restore'),
+                        onTap: () async {
+                          final content =
+                              await backupService.readJsonFromFile(file);
+                          if (content == null || content.isEmpty) return;
+                          await ref
+                              .read(habitsProvider.notifier)
+                              .importJson(content);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('Backup restored 🎉')),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final restored = await ref
+                    .read(habitsProvider.notifier)
+                    .importBackupFromFile(backupService);
+                if (restored) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Backup restored 🎉')),
+                  );
+                }
+              },
+              child: const Text('Browse files…'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
+  void _viewRaw(BuildContext context, WidgetRef ref) {
+    final messenger = ScaffoldMessenger.of(context);
+    final jsonStr = ref.read(habitsProvider.notifier).exportJson();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Raw data'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              jsonStr,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11.5,
+                height: 1.45,
+                color: AppPalette.of(ctx).textSecondary,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonStr));
+              Navigator.pop(ctx);
+              messenger.showSnackBar(
+                const SnackBar(content: Text('JSON copied to clipboard')),
               );
             },
+            child: const Text('Copy JSON'),
           ),
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Habit Loop · build your streaks, one day at a time.',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -284,19 +405,84 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title);
-  final String title;
+class _RowIcon extends StatelessWidget {
+  const _RowIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Text(
-        title,
-        style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+    final p = AppPalette.of(context);
+
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: p.isDark ? 0.16 : 0.12),
+        borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
+      child: Icon(icon, size: 19, color: color),
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
+
+    return Pressable(
+      onTap: onTap,
+      scale: 0.98,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space4),
+        child: Row(
+          children: [
+            _RowIcon(icon: icon, color: color),
+            const SizedBox(width: AppTokens.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 1),
+                  Text(subtitle, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 20, color: p.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  const _Divider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.space4),
+      child: Divider(height: 1, color: AppPalette.of(context).stroke),
     );
   }
 }

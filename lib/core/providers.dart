@@ -91,6 +91,7 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     required int totalDays,
     required DateTime startDate,
     required int colorValue,
+    bool isFixed = false,
   }) async {
     final habit = Habit(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -98,6 +99,7 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
       totalDays: totalDays,
       startDate: startDate,
       colorValue: colorValue,
+      isFixed: isFixed,
     );
     await _repo.add(habit);
     _refresh();
@@ -207,6 +209,11 @@ class TodosNotifier extends StateNotifier<List<Todo>> {
 
   Future<void> delete(String id) async {
     await _repo.delete(id);
+    _refresh();
+  }
+
+  Future<void> restoreTodo(Todo todo) async {
+    await _repo.add(todo);
     _refresh();
   }
 

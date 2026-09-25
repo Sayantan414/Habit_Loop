@@ -1,12 +1,21 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/note.dart';
+import '../../widgets/app_background.dart';
+import '../../widgets/pressable.dart';
 
+/// SCREEN 5b — Note editor.
+///
+/// Deliberately bare: no toolbar, no chrome competing with the text. The only
+/// persistent UI is a thin status strip (saved state, timestamp, word count)
+/// so the writer always knows the note is safe without pressing anything.
 class NoteEditorScreen extends ConsumerStatefulWidget {
   const NoteEditorScreen({super.key, this.note});
 
@@ -35,10 +44,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   void _onTextChanged() {
+    // Keep the word count live while debouncing the actual write.
+    setState(() {});
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
-      _autoSave();
-    });
+    _debounceTimer = Timer(const Duration(milliseconds: 400), _autoSave);
   }
 
   Future<void> _autoSave() async {
@@ -55,32 +64,28 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       return;
     }
 
-    final displayTitle = title.isEmpty ? 'Untitled Note' : title;
+    final displayTitle = title.isEmpty ? 'Untitled note' : title;
 
     if (_currentNote == null) {
       setState(() => _isSaving = true);
-      final newNote = await ref.read(notesProvider.notifier).addNote(
-            title: displayTitle,
-            content: content,
-          );
+      final newNote = await ref
+          .read(notesProvider.notifier)
+          .addNote(title: displayTitle, content: content);
       if (mounted) {
         setState(() {
           _currentNote = newNote;
           _isSaving = false;
         });
       }
-    } else {
-      if (_currentNote!.title != displayTitle || _currentNote!.content != content) {
-        setState(() => _isSaving = true);
-        await ref.read(notesProvider.notifier).updateNote(
-              _currentNote!,
-              title: displayTitle,
-              content: content,
-            );
-        if (mounted) {
-          setState(() => _isSaving = false);
-        }
-      }
+    } else if (_currentNote!.title != displayTitle ||
+        _currentNote!.content != content) {
+      setState(() => _isSaving = true);
+      await ref.read(notesProvider.notifier).updateNote(
+            _currentNote!,
+            title: displayTitle,
+            content: content,
+          );
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -94,6 +99,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     super.dispose();
   }
 
+  int get _wordCount {
+    final text = _contentController.text.trim();
+    if (text.isEmpty) return 0;
+    return text.split(RegExp(r'\s+')).length;
+  }
+
   Future<void> _deleteNote() async {
     if (_currentNote == null) {
       Navigator.of(context).pop();
@@ -103,15 +114,17 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Note'),
-        content: const Text('Are you sure you want to delete this note? This action cannot be undone.'),
+        title: const Text('Delete note?'),
+        content: const Text("This note will be removed. This can't be undone."),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppPalette.of(ctx).danger,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete'),
           ),
@@ -119,23 +132,30 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       ),
     );
 
-    if (confirm == true) {
-      if (!mounted) return;
-      final navigator = Navigator.of(context);
-      final idToDelete = _currentNote!.id;
-      _currentNote = null;
-      await ref.read(notesProvider.notifier).deleteNote(idToDelete);
-      navigator.pop();
-    }
+    if (confirm != true || !mounted) return;
+    final navigator = Navigator.of(context);
+    final idToDelete = _currentNote!.id;
+    _currentNote = null;
+    await ref.read(notesProvider.notifier).deleteNote(idToDelete);
+    navigator.pop();
+  }
+
+  void _copyNote() {
+    final fullText =
+        '${_titleController.text}\n\n${_contentController.text}'.trim();
+    if (fullText.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: fullText));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Note copied to clipboard')));
   }
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final isEditing = _currentNote != null || widget.note != null;
-    final updatedDate = _currentNote?.updatedAt ?? widget.note?.updatedAt ?? DateTime.now();
-    final dateStr = DateFormat('MMM d, yyyy · h:mm a').format(updatedDate);
+    final updatedAt =
+        _currentNote?.updatedAt ?? widget.note?.updatedAt ?? DateTime.now();
 
     return PopScope(
       canPop: true,
@@ -146,134 +166,185 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            isEditing ? 'Edit Note' : 'New Note',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.copy_rounded),
-              tooltip: 'Copy Note',
-              onPressed: () {
-                final fullText = '${_titleController.text}\n\n${_contentController.text}'.trim();
-                if (fullText.isNotEmpty) {
-                  Clipboard.setData(ClipboardData(text: fullText));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Note copied to clipboard')),
-                  );
-                }
-              },
-            ),
-            if (_currentNote != null)
-              IconButton(
-                icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
-                tooltip: 'Delete Note',
-                onPressed: _deleteNote,
-              ),
-          ],
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        backgroundColor: Colors.transparent,
+        body: AppBackground(
+          child: SafeArea(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.schedule_rounded, size: 14, color: scheme.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Text(
-                      dateStr,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        fontSize: 12,
+                // Minimal chrome: back, copy, delete.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Row(
+                    children: [
+                      _RoundAction(
+                        icon: Icons.arrow_back_rounded,
+                        onTap: () => Navigator.of(context).pop(),
                       ),
-                    ),
-                    const Spacer(),
-                    if (_isSaving)
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: scheme.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Saving...',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: scheme.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      )
-                    else if (_currentNote != null)
-                      Row(
-                        children: [
-                          Icon(Icons.check_circle_outline_rounded, size: 13, color: Colors.green.shade600),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Saved',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.green.shade600,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                      const Spacer(),
+                      _RoundAction(
+                        icon: Icons.copy_rounded,
+                        onTap: _copyNote,
                       ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _titleController,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Note Title',
-                    hintStyle: theme.textTheme.headlineSmall?.copyWith(
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
-                      fontWeight: FontWeight.bold,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
+                      if (_currentNote != null) ...[
+                        const SizedBox(width: AppTokens.space2),
+                        _RoundAction(
+                          icon: Icons.delete_outline_rounded,
+                          color: p.danger,
+                          onTap: _deleteNote,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const Divider(height: 24),
                 Expanded(
-                  child: TextField(
-                    controller: _contentController,
-                    textCapitalization: TextCapitalization.sentences,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      height: 1.5,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTokens.gutter,
                     ),
-                    decoration: InputDecoration(
-                      hintText: 'Start writing your note here...',
-                      hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                        color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
-                        height: 1.5,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: AppTokens.space4),
+                        TextField(
+                          controller: _titleController,
+                          textCapitalization: TextCapitalization.sentences,
+                          maxLines: null,
+                          style: theme.textTheme.displaySmall,
+                          decoration: InputDecoration(
+                            hintText: 'Title',
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            hintStyle: theme.textTheme.displaySmall?.copyWith(
+                              color: p.textTertiary.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: AppTokens.space3),
+                        Container(
+                          height: 3,
+                          width: 44,
+                          decoration: BoxDecoration(
+                            borderRadius:
+                                BorderRadius.circular(AppTokens.radiusPill),
+                            color: p.accent,
+                          ),
+                        ),
+                        const SizedBox(height: AppTokens.space4),
+                        Expanded(
+                          child: TextField(
+                            controller: _contentController,
+                            textCapitalization: TextCapitalization.sentences,
+                            maxLines: null,
+                            expands: true,
+                            autofocus: widget.note == null,
+                            textAlignVertical: TextAlignVertical.top,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              height: 1.65,
+                              color: p.textPrimary,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'Start writing…',
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
+                              hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                                height: 1.65,
+                                color: p.textTertiary.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Status strip.
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.gutter,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: p.stroke)),
+                  ),
+                  child: Row(
+                    children: [
+                      if (_isSaving) ...[
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: p.accent,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text('Saving…',
+                            style: theme.textTheme.labelMedium
+                                ?.copyWith(color: p.accent)),
+                      ] else if (_currentNote != null) ...[
+                        Icon(Icons.cloud_done_rounded,
+                            size: 14, color: p.success),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Saved ${DateFormat('MMM d · h:mm a').format(updatedAt)}',
+                          style: theme.textTheme.labelMedium
+                              ?.copyWith(color: p.textTertiary),
+                        ),
+                      ] else
+                        Text(
+                          'Autosaves as you type',
+                          style: theme.textTheme.labelMedium
+                              ?.copyWith(color: p.textTertiary),
+                        ),
+                      const Spacer(),
+                      Text(
+                        '$_wordCount ${_wordCount == 1 ? 'word' : 'words'}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: p.textSecondary,
+                          fontFeatures: AppTypography.tabular,
+                        ),
                       ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RoundAction extends StatelessWidget {
+  const _RoundAction({required this.icon, required this.onTap, this.color});
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: p.isDark ? p.surfaceGlassHi : p.surface,
+          border: Border.all(color: p.stroke),
+        ),
+        child: Icon(icon, size: 19, color: color ?? p.textPrimary),
       ),
     );
   }

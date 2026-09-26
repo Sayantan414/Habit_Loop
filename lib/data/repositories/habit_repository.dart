@@ -39,6 +39,18 @@ class HabitRepository {
     await habit.save();
   }
 
+  /// Logs or removes a slip on [dayNumber] for a bad habit.
+  Future<void> toggleSlip(Habit habit, int dayNumber) async {
+    final slips = habit.slipDays.toList();
+    if (slips.contains(dayNumber)) {
+      slips.remove(dayNumber);
+    } else {
+      slips.add(dayNumber);
+    }
+    habit.slipDays = slips..sort();
+    await habit.save();
+  }
+
   String exportToJson() {
     final habits = getAll();
     final list = habits.map((h) => h.toJson()).toList();

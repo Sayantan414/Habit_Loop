@@ -36,11 +36,20 @@ abstract final class AddHabitSheet {
 }
 
 class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
-  static const _presets = <({int days, String label})>[
+  static const _buildPresets = <({int days, String label})>[
     (days: 21, label: 'Form it'),
     (days: 30, label: 'One month'),
     (days: 60, label: 'Automatic'),
   ];
+
+  static const _quitPresets = <({int days, String label})>[
+    (days: 7, label: 'One week'),
+    (days: 21, label: 'Break it'),
+    (days: 30, label: 'One month'),
+  ];
+
+  List<({int days, String label})> get _presets =>
+      _isBad ? _quitPresets : _buildPresets;
 
   final _titleController = TextEditingController();
   final _customDaysController = TextEditingController();
@@ -48,6 +57,8 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   int _days = 21;
   bool _customDays = false;
   bool _isFixed = false;
+  bool _isBad = false;
+  bool _isStrict = false;
   DateTime _startDate = DateTime.now();
   int _accentIndex = 0;
   List<int> _reminderTimes = [];
@@ -63,6 +74,8 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       final h = widget.habit!;
       _titleController.text = h.title;
       _isFixed = h.isFixed;
+      _isBad = h.isBad;
+      _isStrict = h.isStrict;
       _startDate = h.startDate;
       _reminderTimes = List<int>.from(h.reminderTimes);
 
@@ -106,6 +119,18 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
     return parsed;
   }
 
+  /// Only offered while creating: flipping an existing habit would reinterpret
+  /// its check-ins as slips (or the other way round).
+  void _setBad(bool isBad) {
+    if (isBad == _isBad) return;
+    setState(() {
+      _isBad = isBad;
+      if (!isBad) _isStrict = false;
+      if (!_customDays) _days = _presets.first.days;
+      _error = null;
+    });
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -144,6 +169,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       h.startDate = _startDate;
       h.colorValue = _swatch.id;
       h.isFixed = _isFixed;
+      h.isStrict = _isBad && _isStrict;
       h.reminderTimes = _reminderTimes.toList()..sort();
 
       await ref.read(habitsProvider.notifier).updateHabit(h);
@@ -163,6 +189,8 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
             colorValue: _swatch.id,
             isFixed: _isFixed,
             reminderTimes: _reminderTimes,
+            isBad: _isBad,
+            isStrict: _isStrict,
           );
       if (_reminderTimes.isNotEmpty) {
         await NotificationService.instance.requestPermissions();
@@ -201,8 +229,38 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                       color: color,
                       startDate: _startDate,
                       isFixed: _isFixed,
+                      isBad: _isBad,
+                      isStrict: _isStrict,
                     ),
                     const SizedBox(height: AppTokens.space6),
+
+                    if (widget.habit == null) ...[
+                      _FieldLabel('Habit type'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ModeTile(
+                              title: 'Build',
+                              icon: Icons.trending_up_rounded,
+                              selected: !_isBad,
+                              color: color,
+                              onTap: () => _setBad(false),
+                            ),
+                          ),
+                          const SizedBox(width: AppTokens.space2),
+                          Expanded(
+                            child: _ModeTile(
+                              title: 'Quit',
+                              icon: Icons.block_rounded,
+                              selected: _isBad,
+                              color: color,
+                              onTap: () => _setBad(true),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppTokens.space5),
+                    ],
 
                     _FieldLabel('Habit title'),
                     TextField(
@@ -213,7 +271,9 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                           FocusManager.instance.primaryFocus?.unfocus(),
                       style: theme.textTheme.titleMedium,
                       decoration: InputDecoration(
-                        hintText: 'e.g. Read 20 pages, Morning run',
+                        hintText: _isBad
+                            ? 'e.g. No cigarettes, No junk food'
+                            : 'e.g. Read 20 pages, Morning run',
                         prefixIcon: Icon(
                           Icons.edit_rounded,
                           size: 19,
@@ -223,30 +283,64 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                     ),
                     const SizedBox(height: AppTokens.space5),
 
-                    _FieldLabel('Habit mode'),
+                    _FieldLabel(_isBad ? 'If you slip' : 'Habit mode'),
                     Row(
                       children: [
                         Expanded(
                           child: _ModeTile(
-                            title: 'Extended Mode',
+                            title: _isBad ? 'Extended' : 'Extended Mode',
                             icon: Icons.all_inclusive_rounded,
-                            selected: !_isFixed,
+                            selected: !_isFixed && !_isStrict,
                             color: color,
-                            onTap: () => setState(() => _isFixed = false),
+                            onTap: () => setState(() {
+                              _isFixed = false;
+                              _isStrict = false;
+                            }),
                           ),
                         ),
                         const SizedBox(width: AppTokens.space2),
                         Expanded(
                           child: _ModeTile(
-                            title: 'Fixed Mode',
+                            title: _isBad ? 'Fixed' : 'Fixed Mode',
                             icon: Icons.timer_rounded,
-                            selected: _isFixed,
+                            selected: _isFixed && !_isStrict,
                             color: color,
-                            onTap: () => setState(() => _isFixed = true),
+                            onTap: () => setState(() {
+                              _isFixed = true;
+                              _isStrict = false;
+                            }),
                           ),
                         ),
+                        if (_isBad) ...[
+                          const SizedBox(width: AppTokens.space2),
+                          Expanded(
+                            child: _ModeTile(
+                              title: 'Strict',
+                              icon: Icons.restart_alt_rounded,
+                              selected: _isStrict,
+                              color: color,
+                              onTap: () => setState(() {
+                                _isFixed = false;
+                                _isStrict = true;
+                              }),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
+                    if (_isBad) ...[
+                      const SizedBox(height: AppTokens.space2),
+                      Text(
+                        _isStrict
+                            ? 'A slip restarts your clean count. You need every day in a row.'
+                            : _isFixed
+                            ? 'Slips are recorded, and the challenge ends on schedule.'
+                            : 'Each slip adds one day to the end. Your progress is kept.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: AppTokens.space5),
 
                     _FieldLabel('Challenge length'),
@@ -339,7 +433,9 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                     const SizedBox(height: AppTokens.space5),
 
                     if (NotificationService.instance.isSupported) ...[
-                      _FieldLabel('Daily reminders'),
+                      _FieldLabel(
+                        _isBad ? 'Daily encouragement' : 'Daily reminders',
+                      ),
                       ReminderTimesPicker(
                         times: _reminderTimes,
                         color: color,
@@ -577,6 +673,8 @@ class _PreviewCard extends StatelessWidget {
     required this.color,
     required this.startDate,
     required this.isFixed,
+    required this.isBad,
+    required this.isStrict,
   });
 
   final String title;
@@ -584,6 +682,8 @@ class _PreviewCard extends StatelessWidget {
   final Color color;
   final DateTime startDate;
   final bool isFixed;
+  final bool isBad;
+  final bool isStrict;
 
   @override
   Widget build(BuildContext context) {
@@ -610,7 +710,9 @@ class _PreviewCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title.isEmpty ? 'Your new habit' : title,
+                  title.isEmpty
+                      ? (isBad ? 'The habit you\'re quitting' : 'Your new habit')
+                      : title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleLarge?.copyWith(
@@ -619,7 +721,9 @@ class _PreviewCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '$days days · ${isFixed ? 'Fixed duration' : 'Extended duration'} · starts ${DateFormat.MMMd().format(startDate)}',
+                  isBad
+                      ? '$days clean days · ${isStrict ? 'Strict' : isFixed ? 'Fixed' : 'Extended'} · starts ${DateFormat.MMMd().format(startDate)}'
+                      : '$days days · ${isFixed ? 'Fixed duration' : 'Extended duration'} · starts ${DateFormat.MMMd().format(startDate)}',
                   style: theme.textTheme.bodySmall,
                 ),
               ],
@@ -633,7 +737,11 @@ class _PreviewCard extends StatelessWidget {
               color: color.withValues(alpha: p.isDark ? 0.16 : 0.12),
               border: Border.all(color: color.withValues(alpha: 0.4), width: 2),
             ),
-            child: Icon(Icons.add_rounded, color: color, size: 22),
+            child: Icon(
+              isBad ? Icons.block_rounded : Icons.add_rounded,
+              color: color,
+              size: 22,
+            ),
           ),
         ],
       ),

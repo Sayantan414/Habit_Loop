@@ -65,7 +65,7 @@ class WidgetService {
     // Same filter and ordering as activeHabitsProvider, so the widget's
     // counts always agree with the Today tab.
     final active = habits
-        .where((h) => !h.archived && h.isActiveToday && !h.isFinished)
+        .where((h) => !h.isBad && !h.archived && h.isActiveToday && !h.isFinished)
         .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final done = active.where((h) => h.isCompletedToday).length;

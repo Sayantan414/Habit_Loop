@@ -13,6 +13,7 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/progress_ring.dart';
 import '../../widgets/reminder_times_picker.dart';
+import '../../widgets/slip_dialog.dart';
 import '../add_habit/add_habit_screen.dart';
 
 /// SCREEN 2 — Habit detail and challenge grid.
@@ -107,6 +108,7 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
               _DetailAppBar(
                 title: habit.title,
                 isPaused: habit.isPaused,
+                isBad: habit.isBad,
                 onEdit: () => AddHabitScreen.push(context, habit: habit),
                 onTogglePause: () => _togglePause(habit),
                 onDelete: () => _confirmDelete(habit),
@@ -138,7 +140,10 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                         onExtend: () => showExtendHabitDialog(context, ref, habit),
                       ),
                     ],
-                    if (!habit.isFixed && habit.missedDaysCount > 0 && !habit.isPaused) ...[
+                    if ((!habit.isFixed || habit.isStrict) &&
+                        habit.missedDaysCount > 0 &&
+                        !habit.isPaused &&
+                        !habit.isFinished) ...[
                       const SizedBox(height: AppTokens.space4),
                       _ExtensionBanner(habit: habit),
                     ],
@@ -157,12 +162,16 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                     SectionHeader(
                       title: 'Challenge grid',
                       trailing: TagChip(
-                        label: habit.isFixed ? 'Fixed mode' : 'Extended mode',
+                        label: habit.isStrict
+                            ? 'Strict mode'
+                            : habit.isFixed
+                            ? 'Fixed mode'
+                            : 'Extended mode',
                         color: p.textSecondary,
                         dense: true,
                       ),
                     ),
-                    _Legend(color: color),
+                    _Legend(color: color, isBad: habit.isBad),
                     const SizedBox(height: AppTokens.space4),
                     GridView.builder(
                       shrinkWrap: true,
@@ -183,11 +192,25 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                           dayNumber: dayNumber,
                           isDone: isDone,
                           isToday: isToday,
-                          isMissed: dayNumber < today && !isDone,
+                          isMissed: habit.isDayMissed(dayNumber),
                           isBonus: dayNumber > habit.totalDays,
                           color: color,
-                          pulse: _pulse,
-                          onTap: habit.isPaused
+                          // Pulsing would invite a tap, and for a bad habit
+                          // a tap on today means logging a slip.
+                          pulse: habit.isBad ? null : _pulse,
+                          onTap: habit.isBad && !habit.isPaused
+                              ? (dayNumber <= today
+                                    ? () => toggleSlipWithConfirm(
+                                        context,
+                                        ref,
+                                        habit,
+                                        dayNumber,
+                                      )
+                                    : () => _nudge(
+                                        'Day $dayNumber starts on '
+                                        '${DateFormat.MMMd().format(habit.startDate.add(Duration(days: dayNumber - 1)))}.',
+                                      ))
+                              : habit.isPaused
                               ? () => _nudge('Habit is currently paused. Resume it to check in.')
                               : isToday
                                   ? () => _toggleToday(habit)
@@ -244,6 +267,7 @@ class _DetailAppBar extends StatelessWidget {
   const _DetailAppBar({
     required this.title,
     required this.isPaused,
+    this.isBad = false,
     required this.onEdit,
     required this.onTogglePause,
     required this.onDelete,
@@ -251,6 +275,7 @@ class _DetailAppBar extends StatelessWidget {
 
   final String title;
   final bool isPaused;
+  final bool isBad;
   final VoidCallback onEdit;
   final VoidCallback onTogglePause;
   final VoidCallback onDelete;
@@ -290,27 +315,28 @@ class _DetailAppBar extends StatelessWidget {
               if (value == 'delete') onDelete();
             },
             itemBuilder: (ctx) => [
-              PopupMenuItem(
-                value: 'pause',
-                child: Row(
-                  children: [
-                    Icon(
-                      isPaused
-                          ? Icons.play_arrow_rounded
-                          : Icons.pause_circle_outline_rounded,
-                      size: 18,
-                      color: isPaused ? p.success : p.warning,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      isPaused ? 'Resume habit' : 'Pause habit',
-                      style: TextStyle(
+              if (!isBad || isPaused)
+                PopupMenuItem(
+                  value: 'pause',
+                  child: Row(
+                    children: [
+                      Icon(
+                        isPaused
+                            ? Icons.play_arrow_rounded
+                            : Icons.pause_circle_outline_rounded,
+                        size: 18,
                         color: isPaused ? p.success : p.warning,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      Text(
+                        isPaused ? 'Resume habit' : 'Pause habit',
+                        style: TextStyle(
+                          color: isPaused ? p.success : p.warning,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               PopupMenuItem(
                 value: 'edit',
                 child: Row(
@@ -399,7 +425,9 @@ class _HeroHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${habit.totalDays}-DAY CHALLENGE',
+                  habit.isBad
+                      ? '${habit.totalDays}-DAY QUIT'
+                      : '${habit.totalDays}-DAY CHALLENGE',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: color,
                     fontWeight: FontWeight.w700,
@@ -427,8 +455,12 @@ class _HeroHeader extends StatelessWidget {
                       )
                     else
                       _HeroMeta(
-                        icon: Icons.local_fire_department_rounded,
-                        label: '${habit.currentStreak} day streak',
+                        icon: habit.isBad
+                            ? Icons.shield_outlined
+                            : Icons.local_fire_department_rounded,
+                        label: habit.isBad
+                            ? '${habit.currentStreak} days clean'
+                            : '${habit.currentStreak} day streak',
                         color: p.warning,
                         bold: true,
                       ),
@@ -504,6 +536,33 @@ class _StatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
+
+    if (habit.isBad) {
+      return Row(
+        children: [
+          _StatChip(
+            icon: Icons.shield_outlined,
+            label: 'Clean days',
+            value: '${habit.doneDaysCount}/${habit.totalDays}',
+            color: color,
+          ),
+          const SizedBox(width: AppTokens.space3),
+          _StatChip(
+            icon: Icons.replay_rounded,
+            label: 'Slips',
+            value: '${habit.missedDaysCount}',
+            color: p.textSecondary,
+          ),
+          const SizedBox(width: AppTokens.space3),
+          _StatChip(
+            icon: Icons.trending_up_rounded,
+            label: 'Progress',
+            value: '${(habit.progress * 100).round()}%',
+            color: p.success,
+          ),
+        ],
+      );
+    }
 
     return Row(
       children: [
@@ -592,41 +651,34 @@ class _ExtensionBanner extends StatelessWidget {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
     final missed = habit.missedDaysCount;
+    final days = missed == 1 ? 'day' : 'days';
+
+    final String label;
+    if (habit.isStrict) {
+      label = 'Strict mode: Clean count restarted';
+    } else {
+      label = 'Extended by +$missed $days';
+    }
 
     return Container(
-      padding: const EdgeInsets.all(AppTokens.space4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: p.warning.withValues(alpha: p.isDark ? 0.12 : 0.1),
+        color: p.warning.withValues(alpha: p.isDark ? 0.12 : 0.08),
         borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-        border: Border.all(color: p.warning.withValues(alpha: 0.35)),
+        border: Border.all(color: p.warning.withValues(alpha: 0.3)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: p.warning.withValues(alpha: 0.18),
-            ),
-            child: Icon(Icons.more_time_rounded, size: 18, color: p.warning),
-          ),
-          const SizedBox(width: AppTokens.space3),
+          Icon(Icons.more_time_rounded, size: 16, color: p.warning),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Challenge extended by +$missed ${missed == 1 ? 'day' : 'days'}',
-                  style: theme.textTheme.titleMedium?.copyWith(color: p.warning),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$missed missed ${missed == 1 ? 'day was' : 'days were'} added to '
-                  'the end, so the target is now ${habit.effectiveTotalDays} days.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: p.warning,
+              ),
             ),
           ),
         ],
@@ -636,9 +688,10 @@ class _ExtensionBanner extends StatelessWidget {
 }
 
 class _Legend extends StatelessWidget {
-  const _Legend({required this.color});
+  const _Legend({required this.color, this.isBad = false});
 
   final Color color;
+  final bool isBad;
 
   @override
   Widget build(BuildContext context) {
@@ -648,14 +701,17 @@ class _Legend extends StatelessWidget {
       spacing: AppTokens.space3,
       runSpacing: AppTokens.space2,
       children: [
-        _LegendDot(color: color, label: 'Completed'),
-        _LegendDot(color: p.danger.withValues(alpha: 0.5), label: 'Missed'),
+        _LegendDot(color: color, label: isBad ? 'Clean' : 'Completed'),
+        _LegendDot(
+          color: p.danger.withValues(alpha: 0.5),
+          label: isBad ? 'Slipped' : 'Missed',
+        ),
         _LegendDot(color: color, label: 'Today', outlined: true),
         _LegendDot(
           color: p.isDark
               ? Colors.white.withValues(alpha: 0.12)
               : p.strokeStrong,
-          label: 'Locked',
+          label: isBad ? 'Upcoming' : 'Locked',
         ),
       ],
     );
@@ -723,7 +779,9 @@ class _DayCell extends StatelessWidget {
   /// True for the days appended by the missed-day penalty.
   final bool isBonus;
   final Color color;
-  final Animation<double> pulse;
+
+  /// Null keeps today's cell still.
+  final Animation<double>? pulse;
   final VoidCallback onTap;
 
   @override
@@ -794,7 +852,8 @@ class _DayCell extends StatelessWidget {
 
     // Today breathes on its border rather than on a shadow — the one editable
     // cell still stands out, without anything on screen emitting light.
-    if (isToday && !isDone) {
+    final pulse = this.pulse;
+    if (isToday && !isDone && pulse != null) {
       return Pressable(
         onTap: onTap,
         scale: 0.9,
@@ -873,7 +932,9 @@ class _CompletionBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Challenge Completed! 🎉',
+                      habit.isBad && habit.isFixed && habit.missedDaysCount > 0
+                          ? 'Challenge finished'
+                          : 'Challenge Completed! 🎉',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: p.success,
                         fontWeight: FontWeight.w700,
@@ -881,7 +942,7 @@ class _CompletionBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'You successfully finished all ${habit.totalDays} days of this challenge.',
+                      _completionText(habit),
                       style: theme.textTheme.bodySmall,
                     ),
                   ],
@@ -921,6 +982,22 @@ class _CompletionBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+String _completionText(Habit habit) {
+  if (!habit.isBad) {
+    return 'You successfully finished all ${habit.totalDays} days of this challenge.';
+  }
+  final slips = habit.missedDaysCount;
+  if (slips == 0) {
+    return 'You stayed clean for all ${habit.totalDays} days.';
+  }
+  if (habit.isFixed && !habit.isStrict) {
+    return 'You made it: ${habit.doneDaysCount} of ${habit.totalDays} days clean. '
+        'Every one of them counts.';
+  }
+  return 'You reached ${habit.totalDays} clean days, working through '
+      '$slips ${slips == 1 ? 'slip' : 'slips'} along the way.';
 }
 
 class _PausedBanner extends StatelessWidget {

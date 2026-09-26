@@ -10,6 +10,7 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/habit_card.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/progress_ring.dart';
+import '../../widgets/slip_dialog.dart';
 import '../add_habit/add_habit_screen.dart';
 import '../habit_detail/habit_detail_screen.dart';
 import 'completed_habits_screen.dart';
@@ -66,6 +67,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   @override
   Widget build(BuildContext context) {
     final active = ref.watch(activeHabitsProvider);
+    final avoiding = ref.watch(avoidingHabitsProvider);
     final finished = ref.watch(finishedHabitsProvider);
     final paused = ref.watch(pausedHabitsProvider);
     final summary = ref.watch(todaySummaryProvider);
@@ -82,9 +84,16 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
         children: [
           const _GreetingHeader(),
           const SizedBox(height: AppTokens.space5),
-          _DailyProgressCard(summary: summary, habits: active),
+          _DailyProgressCard(
+            summary: summary,
+            habits: active,
+            hasAvoiding: avoiding.isNotEmpty,
+          ),
           const SizedBox(height: AppTokens.space6),
-          if (active.isEmpty && finished.isEmpty && paused.isEmpty)
+          if (active.isEmpty &&
+              avoiding.isEmpty &&
+              finished.isEmpty &&
+              paused.isEmpty)
             _EmptyState(onAdd: () => AddHabitSheet.show(context))
           else ...[
             if (active.isNotEmpty || finished.isNotEmpty)
@@ -116,6 +125,25 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                   onCheckIn: () => _check(habit, habit.todayDayNumber),
                 ),
               ),
+            if (avoiding.isNotEmpty) ...[
+              if (active.isNotEmpty || finished.isNotEmpty)
+                const SizedBox(height: AppTokens.space6),
+              SectionHeader(title: 'Avoiding', count: avoiding.length),
+              for (final habit in avoiding)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppTokens.space3),
+                  child: AvoidHabitCard(
+                    habit: habit,
+                    onTap: () => _openDetail(habit),
+                    onSlip: () => toggleSlipWithConfirm(
+                      context,
+                      ref,
+                      habit,
+                      habit.todayDayNumber,
+                    ),
+                  ),
+                ),
+            ],
             if (paused.isNotEmpty) ...[
               const SizedBox(height: AppTokens.space6),
               SectionHeader(
@@ -413,10 +441,15 @@ class _MiniStat extends StatelessWidget {
 // ------------------------------------------------------- daily progress card
 
 class _DailyProgressCard extends StatelessWidget {
-  const _DailyProgressCard({required this.summary, required this.habits});
+  const _DailyProgressCard({
+    required this.summary,
+    required this.habits,
+    this.hasAvoiding = false,
+  });
 
   final TodaySummary summary;
   final List<Habit> habits;
+  final bool hasAvoiding;
 
   @override
   Widget build(BuildContext context) {
@@ -443,7 +476,9 @@ class _DailyProgressCard extends StatelessWidget {
             const SizedBox(width: AppTokens.space4),
             Expanded(
               child: Text(
-                'No habits running today — add one and your streak starts tonight.',
+                hasAvoiding
+                    ? "Nothing to check in today. Stay strong on what you're avoiding."
+                    : 'No habits running today — add one and your streak starts tonight.',
                 style: theme.textTheme.bodyMedium,
               ),
             ),

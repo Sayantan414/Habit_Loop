@@ -241,8 +241,11 @@ class _ManageHabitsScreenState extends ConsumerState<ManageHabitsScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '${habit.totalDays}-day challenge · '
-                                          '${habit.completedDays.length} checked in',
+                                          habit.isBad
+                                              ? '${habit.totalDays}-day quit · '
+                                                  '${habit.doneDaysCount} clean days'
+                                              : '${habit.totalDays}-day challenge · '
+                                                  '${habit.completedDays.length} checked in',
                                           style: theme.textTheme.bodySmall,
                                         ),
                                       ],

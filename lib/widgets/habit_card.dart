@@ -94,6 +94,116 @@ class HabitCard extends StatelessWidget {
   }
 }
 
+/// Row for a bad habit in the Today dashboard's "Avoiding" section.
+///
+/// There is nothing to check in: the day counts as clean unless a slip is
+/// logged, so the only control is a quiet "Slipped" button (confirmed before
+/// it counts). Once slipped, the same button undoes it.
+class AvoidHabitCard extends StatelessWidget {
+  const AvoidHabitCard({
+    super.key,
+    required this.habit,
+    required this.onTap,
+    required this.onSlip,
+  });
+
+  final Habit habit;
+  final VoidCallback onTap;
+  final VoidCallback onSlip;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
+    final color = AppAccents.of(context, habit.colorValue);
+    final slipped = habit.isSlippedToday;
+    final streak = habit.currentStreak;
+    final dayNumber = habit.todayDayNumber.clamp(1, habit.effectiveTotalDays);
+
+    return GlassCard(
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                margin: const EdgeInsets.only(top: 7, right: 10),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      habit.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        TagChip(
+                          label: '$streak ${streak == 1 ? 'day' : 'days'} clean',
+                          icon: Icons.shield_outlined,
+                          color: p.textSecondary,
+                          dense: true,
+                        ),
+                        TagChip(
+                          label:
+                              'Day $dayNumber of ${habit.effectiveTotalDays}',
+                          color: p.textSecondary,
+                          dense: true,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      slipped
+                          ? 'Slipped today — tomorrow is a fresh start.'
+                          : 'Clean so far today',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: slipped ? p.textTertiary : p.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                onPressed: onSlip,
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  foregroundColor: slipped ? p.textSecondary : p.danger,
+                  side: BorderSide(
+                    color: slipped
+                        ? p.strokeStrong
+                        : p.danger.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Text(slipped ? 'Undo' : 'Slipped'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _MiniDayStrip(habit: habit, color: color),
+        ],
+      ),
+    );
+  }
+}
+
 /// The single-tap check-in control.
 ///
 /// On tap it pops (0.86 → 1.12 → 1.0) while a ring expands and fades outward,
@@ -256,7 +366,7 @@ class _MiniDayStrip extends StatelessWidget {
               day: day,
               isDone: habit.isDayCompleted(day),
               isToday: day == today,
-              isMissed: day < today && !habit.isDayCompleted(day),
+              isMissed: habit.isDayMissed(day),
               color: color,
               palette: p,
             ),
@@ -289,12 +399,11 @@ class _ConnectingLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final today = habit.todayDayNumber;
     final day1Done = habit.isDayCompleted(day);
     final day2Done = habit.isDayCompleted(day + 1);
 
-    final day1Missed = day < today && !day1Done;
-    final day2Missed = (day + 1) < today && !day2Done;
+    final day1Missed = habit.isDayMissed(day);
+    final day2Missed = habit.isDayMissed(day + 1);
 
     final Color lineColor;
 

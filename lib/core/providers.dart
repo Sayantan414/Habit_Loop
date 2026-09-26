@@ -114,6 +114,8 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     required int colorValue,
     bool isFixed = false,
     List<int> reminderTimes = const [],
+    bool isBad = false,
+    bool isStrict = false,
   }) async {
     final habit = Habit(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -123,13 +125,15 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
       colorValue: colorValue,
       isFixed: isFixed,
       reminderTimes: reminderTimes.toList()..sort(),
+      isBad: isBad,
+      isStrict: isBad && isStrict,
     );
     await _repo.add(habit);
     _refresh();
   }
 
   Future<void> toggleDay(Habit habit, int dayNumber) async {
-    if (dayNumber != habit.todayDayNumber) return;
+    if (habit.isBad || dayNumber != habit.todayDayNumber) return;
     await _repo.toggleDay(habit, dayNumber);
     _refresh();
   }
@@ -138,10 +142,22 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     await toggleDay(habit, habit.todayDayNumber);
   }
 
+  /// Logs or removes a slip for a bad habit. Any day up to today can be
+  /// corrected, so a forgotten slip can still be recorded afterwards.
+  Future<void> toggleSlip(Habit habit, int dayNumber) async {
+    if (!habit.isBad || dayNumber < 1 || dayNumber > habit.todayDayNumber) {
+      return;
+    }
+    await _repo.toggleSlip(habit, dayNumber);
+    _refresh();
+  }
+
   /// Handles the "Mark as done" button on a reminder. Never un-checks.
   Future<bool> markDoneFromReminder(String habitId) async {
     final habit = _repo.getById(habitId);
-    if (habit == null || habit.archived || !habit.isActiveToday) return false;
+    if (habit == null || habit.archived || habit.isBad || !habit.isActiveToday) {
+      return false;
+    }
     if (habit.isCompletedToday) return false;
     await toggleToday(habit);
     return true;
@@ -314,10 +330,23 @@ final completedTodosProvider = Provider<List<Todo>>((ref) {
     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 });
 
-/// Active (not archived, ongoing/un-finished, still within their day range) habits.
+/// Active (not archived, ongoing/un-finished, still within their day range)
+/// good habits — the ones checked in today.
 final activeHabitsProvider = Provider<List<Habit>>((ref) {
   final habits = ref.watch(habitsProvider);
-  return habits.where((h) => !h.archived && h.isActiveToday && !h.isFinished).toList()
+  return habits
+      .where((h) => !h.isBad && !h.archived && h.isActiveToday && !h.isFinished)
+      .toList()
+    ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+});
+
+/// Active bad habits the user is quitting. Kept out of [todaySummaryProvider]
+/// since they are "clean so far" all day and would inflate the progress ring.
+final avoidingHabitsProvider = Provider<List<Habit>>((ref) {
+  final habits = ref.watch(habitsProvider);
+  return habits
+      .where((h) => h.isBad && !h.archived && h.isActiveToday && !h.isFinished)
+      .toList()
     ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 });
 

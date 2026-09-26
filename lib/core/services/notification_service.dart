@@ -154,8 +154,11 @@ class NotificationService {
     for (final habit in habits) {
       if (habit.reminderTimes.isEmpty) continue;
 
-      // Checked off today: drop today's reminders, including ones already shown.
-      if (habit.isCompletedToday) await clearToday(habit);
+      // Checked off (or slipped) today: drop today's reminders, including
+      // ones already shown.
+      if (habit.isCompletedToday || habit.isSlippedToday) {
+        await clearToday(habit);
+      }
 
       for (var offset = 0; offset < _daysAhead; offset++) {
         final day = DateTime(now.year, now.month, now.day + offset);
@@ -192,11 +195,14 @@ class NotificationService {
 
   bool _remindsOn(Habit habit, DateTime day, {required bool isToday}) {
     if (habit.archived || habit.isFinished || habit.isPaused) return false;
-    if (isToday && habit.isCompletedToday) return false;
+    if (isToday && (habit.isCompletedToday || habit.isSlippedToday)) {
+      return false;
+    }
     final dayNumber = habit.dayNumberFor(day);
     if (dayNumber < 1) return false;
     // Extended habits run every day until the target count is reached, so
     // only Fixed ones have a hard last day.
+    if (habit.isBad) return dayNumber <= habit.effectiveTotalDays;
     return !habit.isFixed || dayNumber <= habit.totalDays;
   }
 
@@ -205,6 +211,8 @@ class NotificationService {
     int dayNumber,
     int slot,
   ) {
+    if (habit.isBad) return _quitMessage(habit, dayNumber, slot);
+
     final summary = habit.isFixed
         ? 'Day $dayNumber of ${habit.totalDays}'
         : 'Day $dayNumber · ${habit.totalDays}-day loop';
@@ -226,6 +234,32 @@ class NotificationService {
     ];
     return (
       title: 'Time for ${habit.title}',
+      body: lines[(dayNumber + slot) % lines.length],
+      summary: summary,
+    );
+  }
+
+  /// Encouragement rather than a to-do: there is nothing to check off, and
+  /// the user only needs to open the app if they slipped.
+  ({String title, String body, String summary}) _quitMessage(
+    Habit habit,
+    int dayNumber,
+    int slot,
+  ) {
+    final summary = 'Day $dayNumber of ${habit.effectiveTotalDays}';
+    // Assumes no slips between now and [dayNumber]; re-synced on every change.
+    final clean = habit.currentStreak + (dayNumber - habit.todayDayNumber);
+
+    const lines = [
+      "Cravings pass. You've got this.",
+      'Every clean day makes the next one easier.',
+      'Only open the app if you slipped — otherwise, keep going.',
+      'One day at a time. Today counts.',
+    ];
+    return (
+      title: clean > 0
+          ? '${habit.title}: $clean ${clean == 1 ? 'day' : 'days'} clean'
+          : 'Stay strong: ${habit.title}',
       body: lines[(dayNumber + slot) % lines.length],
       summary: summary,
     );
@@ -255,13 +289,15 @@ class NotificationService {
           contentTitle: message.title,
           summaryText: message.summary,
         ),
-        actions: const [
-          AndroidNotificationAction(
-            markDoneActionId,
-            'Mark as done',
-            showsUserInterface: true,
-          ),
-        ],
+        actions: habit.isBad
+            ? null
+            : const [
+                AndroidNotificationAction(
+                  markDoneActionId,
+                  'Mark as done',
+                  showsUserInterface: true,
+                ),
+              ],
       ),
     );
   }

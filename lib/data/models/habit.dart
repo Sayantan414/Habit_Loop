@@ -2,8 +2,11 @@ import 'package:hive_ce/hive.dart';
 
 part 'habit.g.dart';
 
-/// A single habit the user is trying to build, run over a fixed number
-/// of days (e.g. "Exercise" for 21 days).
+/// A single habit the user is trying to build (e.g. "Exercise" for 21 days)
+/// or quit (e.g. "No cigarettes" for 7 days), run over a fixed number of days.
+///
+/// Good habits are checked in once a day. Bad habits work the other way
+/// round: every day that passes counts as clean unless a slip is logged.
 @HiveType(typeId: 0)
 class Habit extends HiveObject {
   Habit({
@@ -19,9 +22,13 @@ class Habit extends HiveObject {
     List<int>? reminderTimes,
     this.isPaused = false,
     this.pausedAt,
+    this.isBad = false,
+    List<int>? slipDays,
+    this.isStrict = false,
   }) : createdAt = createdAt ?? DateTime.now(),
        completedDays = completedDays ?? <int>[],
-       reminderTimes = reminderTimes ?? <int>[];
+       reminderTimes = reminderTimes ?? <int>[],
+       slipDays = slipDays ?? <int>[];
 
   @HiveField(0)
   String id;
@@ -71,6 +78,20 @@ class Habit extends HiveObject {
   @HiveField(11)
   DateTime? pausedAt;
 
+  /// True for a habit the user is quitting rather than building.
+  @HiveField(12, defaultValue: false)
+  bool isBad;
+
+  /// Day numbers (1-based) on which the user logged a slip. Bad habits only.
+  @HiveField(13, defaultValue: [])
+  List<int> slipDays;
+
+  /// Bad habits only: a slip restarts the count, so the challenge is only
+  /// finished after [totalDays] clean days in a row. Takes precedence over
+  /// [isFixed].
+  @HiveField(14, defaultValue: false)
+  bool isStrict;
+
   /// 1-based day number for [date], relative to [startDate].
   int dayNumberFor(DateTime date) {
     final start = DateTime(startDate.year, startDate.month, startDate.day);
@@ -81,7 +102,9 @@ class Habit extends HiveObject {
   int get todayDayNumber => dayNumberFor(DateTime.now());
 
   /// Number of past days (before today) that were missed (not completed).
+  /// For a bad habit this is the number of slips logged so far.
   int get missedDaysCount {
+    if (isBad) return _slipsUpTo(todayDayNumber);
     var count = 0;
     final maxPastDay = todayDayNumber - 1;
     for (var d = 1; d <= maxPastDay; d++) {
@@ -93,29 +116,80 @@ class Habit extends HiveObject {
   }
 
   /// Total target days including +1 extra day added at the end for each missed past day (if Extended mode).
-  int get effectiveTotalDays =>
-      isFixed ? totalDays : (totalDays + missedDaysCount);
+  /// A Strict bad habit needs [totalDays] clean days after its last slip.
+  int get effectiveTotalDays {
+    if (isBad && isStrict) return _lastSlipDay + totalDays;
+    return isFixed ? totalDays : (totalDays + missedDaysCount);
+  }
 
   /// Whether today falls within the habit's active day range (and is not paused).
   bool get isActiveToday =>
       !isPaused && todayDayNumber >= 1 && todayDayNumber <= effectiveTotalDays;
 
-  bool get isCompletedToday => completedDays.contains(todayDayNumber);
+  /// Always false for a bad habit — there is nothing to check in.
+  bool get isCompletedToday =>
+      !isBad && completedDays.contains(todayDayNumber);
 
-  bool isDayCompleted(int dayNumber) => completedDays.contains(dayNumber);
+  bool get isSlippedToday => isBad && slipDays.contains(todayDayNumber);
+
+  /// Good habit: the day was checked in. Bad habit: the day is over and had
+  /// no slip.
+  bool isDayCompleted(int dayNumber) {
+    if (!isBad) return completedDays.contains(dayNumber);
+    return dayNumber >= 1 &&
+        dayNumber < todayDayNumber &&
+        !slipDays.contains(dayNumber);
+  }
+
+  /// Good habit: a past day that wasn't checked in. Bad habit: a slip day
+  /// (including today).
+  bool isDayMissed(int dayNumber) {
+    if (isBad) return slipDays.contains(dayNumber);
+    return dayNumber < todayDayNumber && !completedDays.contains(dayNumber);
+  }
+
+  /// Check-ins for a good habit, finished clean days for a bad one.
+  int get doneDaysCount {
+    if (!isBad) return completedDays.length;
+    final lastPast = (todayDayNumber - 1).clamp(0, effectiveTotalDays);
+    var count = 0;
+    for (var d = 1; d <= lastPast; d++) {
+      if (!slipDays.contains(d)) count++;
+    }
+    return count;
+  }
 
   /// True once the target number of days has been completed OR (for Fixed mode) when duration expires.
-  bool get isFinished =>
-      completedDays.length >= totalDays ||
-      (isFixed && todayDayNumber > totalDays);
+  /// A bad habit is finished once its whole (possibly extended) run is over.
+  bool get isFinished {
+    if (isBad) return !isPaused && todayDayNumber > effectiveTotalDays;
+    return completedDays.length >= totalDays ||
+        (isFixed && todayDayNumber > totalDays);
+  }
 
   /// Progress towards completing the target number of days (totalDays).
-  double get progress =>
-      totalDays == 0 ? 0 : (completedDays.length / totalDays).clamp(0.0, 1.0);
+  double get progress {
+    if (totalDays == 0) return 0;
+    final done = isBad && isStrict ? currentStreak : doneDaysCount;
+    return (done / totalDays).clamp(0.0, 1.0);
+  }
 
   /// Current consecutive streak counting back from today (or from the
   /// last active day if the challenge already ended).
+  ///
+  /// For a bad habit: finished days clean since the last slip ("5 days
+  /// clean"). A slip today drops it to 0.
   int get currentStreak {
+    if (isBad) {
+      if (isSlippedToday) return 0;
+      var streak = 0;
+      var day = (todayDayNumber - 1).clamp(0, effectiveTotalDays);
+      while (day >= 1 && !slipDays.contains(day)) {
+        streak++;
+        day--;
+      }
+      return streak;
+    }
     final done = completedDays.toSet();
     var streak = 0;
     var day = todayDayNumber > effectiveTotalDays
@@ -127,6 +201,12 @@ class Habit extends HiveObject {
     }
     return streak;
   }
+
+  int get _lastSlipDay =>
+      slipDays.fold(0, (last, d) => d > last && d <= todayDayNumber ? d : last);
+
+  int _slipsUpTo(int dayNumber) =>
+      slipDays.where((d) => d >= 1 && d <= dayNumber).length;
 
   Map<String, dynamic> toJson() {
     return {
@@ -142,6 +222,9 @@ class Habit extends HiveObject {
       'reminderTimes': reminderTimes,
       'isPaused': isPaused,
       'pausedAt': pausedAt?.toIso8601String(),
+      'isBad': isBad,
+      'slipDays': slipDays,
+      'isStrict': isStrict,
     };
   }
 
@@ -167,6 +250,11 @@ class Habit extends HiveObject {
       pausedAt: json['pausedAt'] != null
           ? DateTime.parse(json['pausedAt'] as String)
           : null,
+      isBad: json['isBad'] as bool? ?? false,
+      slipDays: (json['slipDays'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
+      isStrict: json['isStrict'] as bool? ?? false,
     );
   }
 }

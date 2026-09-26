@@ -42,6 +42,17 @@ final soundServiceProvider = Provider<SoundService>((ref) {
   return SoundService(enabled: settings.getSoundEnabled());
 });
 
+/// A request for [AppShell] to switch tabs, e.g. from a home screen widget tap.
+///
+/// Each request is a fresh object (no value equality), so asking for the same
+/// tab twice still notifies listeners.
+class ShellTabRequest {
+  ShellTabRequest(this.index);
+  final int index;
+}
+
+final shellTabRequestProvider = StateProvider<ShellTabRequest?>((ref) => null);
+
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   ThemeModeNotifier(this._settings) : super(_settings.getThemeMode());
   final SettingsService _settings;
@@ -74,7 +85,7 @@ final soundEnabledProvider = StateNotifierProvider<SoundEnabledNotifier, bool>((
 
 class HabitsNotifier extends StateNotifier<List<Habit>> {
   HabitsNotifier(this._repo, this._todoRepo, this._noteRepo, this._ref) : super(_repo.getAll()) {
-    WidgetService.updateToday(state);
+    WidgetService.updateHabits(state);
     NotificationService.instance.syncAll(state);
   }
 
@@ -85,12 +96,16 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
 
   void _refresh() {
     state = _repo.getAll();
-    WidgetService.updateToday(state);
+    WidgetService.updateHabits(state);
     NotificationService.instance.syncAll(state);
   }
 
-  /// Re-plans reminders, e.g. when the app returns to the foreground on a new day.
-  void refreshReminders() => NotificationService.instance.syncAll(state);
+  /// Re-plans reminders and republishes the home screen widget, e.g. when the
+  /// app returns to the foreground on a new day.
+  void refreshReminders() {
+    NotificationService.instance.syncAll(state);
+    WidgetService.updateHabits(state);
+  }
 
   Future<void> addHabit({
     required String title,
@@ -156,6 +171,31 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     _refresh();
   }
 
+  Future<void> togglePause(Habit habit) async {
+    if (habit.isPaused) {
+      if (habit.pausedAt != null) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final startPause = DateTime(
+          habit.pausedAt!.year,
+          habit.pausedAt!.month,
+          habit.pausedAt!.day,
+        );
+        final pauseDays = today.difference(startPause).inDays;
+        if (pauseDays > 0) {
+          habit.startDate = habit.startDate.add(Duration(days: pauseDays));
+        }
+      }
+      habit.isPaused = false;
+      habit.pausedAt = null;
+    } else {
+      await NotificationService.instance.clearToday(habit);
+      habit.isPaused = true;
+      habit.pausedAt = DateTime.now();
+    }
+    await updateHabit(habit);
+  }
+
   String exportJson() {
     final habitList = _repo.exportToJson();
     final habitJson = jsonDecode(habitList) as List<dynamic>;
@@ -211,11 +251,14 @@ final habitsProvider = StateNotifierProvider<HabitsNotifier, List<Habit>>((ref) 
 });
 
 class TodosNotifier extends StateNotifier<List<Todo>> {
-  TodosNotifier(this._repo) : super(_repo.getAll());
+  TodosNotifier(this._repo) : super(_repo.getAll()) {
+    WidgetService.updateTodos(state);
+  }
   final TodoRepository _repo;
 
   void _refresh() {
     state = _repo.getAll();
+    WidgetService.updateTodos(state);
   }
 
   Future<void> addTodo(String title) async {
@@ -283,6 +326,13 @@ final finishedHabitsProvider = Provider<List<Habit>>((ref) {
   final habits = ref.watch(habitsProvider);
   return habits.where((h) => !h.archived && h.isFinished).toList()
     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+});
+
+/// Habits currently on pause.
+final pausedHabitsProvider = Provider<List<Habit>>((ref) {
+  final habits = ref.watch(habitsProvider);
+  return habits.where((h) => !h.archived && h.isPaused).toList()
+    ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 });
 
 class TodaySummary {

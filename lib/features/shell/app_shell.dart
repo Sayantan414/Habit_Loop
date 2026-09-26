@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/glass_card.dart';
@@ -72,6 +73,10 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ShellTabRequest?>(shellTabRequestProvider, (_, request) {
+      if (request != null) _onNavSelected(request.index);
+    });
+
     final p = AppPalette.of(context);
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;

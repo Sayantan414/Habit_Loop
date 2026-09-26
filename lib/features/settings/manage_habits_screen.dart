@@ -10,7 +10,7 @@ import '../../widgets/pressable.dart';
 import '../add_habit/add_habit_screen.dart';
 import '../habit_detail/habit_detail_screen.dart';
 
-enum _HabitFilter { all, ongoing, completed }
+enum _HabitFilter { all, ongoing, paused, completed }
 
 /// Edit or remove existing habits. Reached from Settings → Habits.
 class ManageHabitsScreen extends ConsumerStatefulWidget {
@@ -34,13 +34,16 @@ class _ManageHabitsScreenState extends ConsumerState<ManageHabitsScreen> {
         case _HabitFilter.all:
           return true;
         case _HabitFilter.ongoing:
-          return !h.isFinished;
+          return !h.isFinished && !h.isPaused;
+        case _HabitFilter.paused:
+          return h.isPaused;
         case _HabitFilter.completed:
           return h.isFinished;
       }
     }).toList();
 
-    final ongoingCount = habits.where((h) => !h.isFinished).length;
+    final ongoingCount = habits.where((h) => !h.isFinished && !h.isPaused).length;
+    final pausedCount = habits.where((h) => h.isPaused).length;
     final completedCount = habits.where((h) => h.isFinished).length;
 
     return Scaffold(
@@ -106,7 +109,9 @@ class _ManageHabitsScreenState extends ConsumerState<ManageHabitsScreen> {
                                   ? 'All'
                                   : _filter == _HabitFilter.ongoing
                                       ? 'Ongoing'
-                                      : 'Completed',
+                                      : _filter == _HabitFilter.paused
+                                          ? 'Paused'
+                                          : 'Completed',
                               style: theme.textTheme.labelMedium?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: p.textPrimary,
@@ -129,6 +134,10 @@ class _ManageHabitsScreenState extends ConsumerState<ManageHabitsScreen> {
                         PopupMenuItem(
                           value: _HabitFilter.ongoing,
                           child: Text('Ongoing ($ongoingCount)'),
+                        ),
+                        PopupMenuItem(
+                          value: _HabitFilter.paused,
+                          child: Text('Paused ($pausedCount)'),
                         ),
                         PopupMenuItem(
                           value: _HabitFilter.completed,
@@ -341,9 +350,11 @@ class _EmptyManage extends StatelessWidget {
 
     final String message = filter == _HabitFilter.ongoing
         ? 'No ongoing habits found.'
-        : filter == _HabitFilter.completed
-            ? 'No completed habits found.'
-            : 'Habits you create on the Today tab show up here.';
+        : filter == _HabitFilter.paused
+            ? 'No paused habits found.'
+            : filter == _HabitFilter.completed
+                ? 'No completed habits found.'
+                : 'Habits you create on the Today tab show up here.';
 
     return Center(
       child: Padding(

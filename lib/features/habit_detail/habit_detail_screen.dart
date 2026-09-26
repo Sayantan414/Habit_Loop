@@ -50,11 +50,23 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
   }
 
   Future<void> _toggleToday(Habit habit) async {
+    if (habit.isPaused) {
+      _nudge('Habit is paused. Resume it to check in.');
+      return;
+    }
     final wasFinished = habit.isFinished;
     await ref.read(habitsProvider.notifier).toggleDay(habit, habit.todayDayNumber);
     ref.read(soundServiceProvider).playCheck();
     if (!wasFinished && habit.isFinished && mounted) {
       Confetti.burst(context);
+    }
+  }
+
+  Future<void> _togglePause(Habit habit) async {
+    final wasPaused = habit.isPaused;
+    await ref.read(habitsProvider.notifier).togglePause(habit);
+    if (mounted) {
+      _nudge(wasPaused ? 'Habit resumed! Welcome back.' : 'Habit paused.');
     }
   }
 
@@ -94,7 +106,9 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
             children: [
               _DetailAppBar(
                 title: habit.title,
+                isPaused: habit.isPaused,
                 onEdit: () => AddHabitScreen.push(context, habit: habit),
+                onTogglePause: () => _togglePause(habit),
                 onDelete: () => _confirmDelete(habit),
               ),
               Expanded(
@@ -109,6 +123,13 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                     _HeroHeader(habit: habit, color: color),
                     const SizedBox(height: AppTokens.space4),
                     _StatRow(habit: habit, color: color),
+                    if (habit.isPaused) ...[
+                      const SizedBox(height: AppTokens.space4),
+                      _PausedBanner(
+                        habit: habit,
+                        onResume: () => _togglePause(habit),
+                      ),
+                    ],
                     if (habit.isFinished) ...[
                       const SizedBox(height: AppTokens.space4),
                       _CompletionBanner(
@@ -117,11 +138,12 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                         onExtend: () => showExtendHabitDialog(context, ref, habit),
                       ),
                     ],
-                    if (!habit.isFixed && habit.missedDaysCount > 0) ...[
+                    if (!habit.isFixed && habit.missedDaysCount > 0 && !habit.isPaused) ...[
                       const SizedBox(height: AppTokens.space4),
                       _ExtensionBanner(habit: habit),
                     ],
                     if (!habit.isFinished &&
+                        !habit.isPaused &&
                         NotificationService.instance.isSupported) ...[
                       const SizedBox(height: AppTokens.space6),
                       const SectionHeader(title: 'Daily reminders'),
@@ -165,14 +187,16 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                           isBonus: dayNumber > habit.totalDays,
                           color: color,
                           pulse: _pulse,
-                          onTap: isToday
-                              ? () => _toggleToday(habit)
-                              : () => _nudge(
-                                    dayNumber < today
-                                        ? 'Day $dayNumber has passed — only today can be checked in.'
-                                        : 'Day $dayNumber unlocks on '
-                                            '${DateFormat.MMMd().format(habit.startDate.add(Duration(days: dayNumber - 1)))}.',
-                                  ),
+                          onTap: habit.isPaused
+                              ? () => _nudge('Habit is currently paused. Resume it to check in.')
+                              : isToday
+                                  ? () => _toggleToday(habit)
+                                  : () => _nudge(
+                                        dayNumber < today
+                                            ? 'Day $dayNumber has passed — only today can be checked in.'
+                                            : 'Day $dayNumber unlocks on '
+                                                '${DateFormat.MMMd().format(habit.startDate.add(Duration(days: dayNumber - 1)))}.',
+                                      ),
                         );
                       },
                     ),
@@ -219,12 +243,16 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
 class _DetailAppBar extends StatelessWidget {
   const _DetailAppBar({
     required this.title,
+    required this.isPaused,
     required this.onEdit,
+    required this.onTogglePause,
     required this.onDelete,
   });
 
   final String title;
+  final bool isPaused;
   final VoidCallback onEdit;
+  final VoidCallback onTogglePause;
   final VoidCallback onDelete;
 
   @override
@@ -257,10 +285,32 @@ class _DetailAppBar extends StatelessWidget {
           PopupMenuButton<String>(
             icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
             onSelected: (value) {
+              if (value == 'pause') onTogglePause();
               if (value == 'edit') onEdit();
               if (value == 'delete') onDelete();
             },
             itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'pause',
+                child: Row(
+                  children: [
+                    Icon(
+                      isPaused
+                          ? Icons.play_arrow_rounded
+                          : Icons.pause_circle_outline_rounded,
+                      size: 18,
+                      color: isPaused ? p.success : p.warning,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      isPaused ? 'Resume habit' : 'Pause habit',
+                      style: TextStyle(
+                        color: isPaused ? p.success : p.warning,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               PopupMenuItem(
                 value: 'edit',
                 child: Row(
@@ -368,12 +418,20 @@ class _HeroHeader extends StatelessWidget {
                   spacing: AppTokens.space3,
                   runSpacing: 6,
                   children: [
-                    _HeroMeta(
-                      icon: Icons.local_fire_department_rounded,
-                      label: '${habit.currentStreak} day streak',
-                      color: p.warning,
-                      bold: true,
-                    ),
+                    if (habit.isPaused)
+                      _HeroMeta(
+                        icon: Icons.pause_circle_filled_rounded,
+                        label: 'PAUSED',
+                        color: p.warning,
+                        bold: true,
+                      )
+                    else
+                      _HeroMeta(
+                        icon: Icons.local_fire_department_rounded,
+                        label: '${habit.currentStreak} day streak',
+                        color: p.warning,
+                        bold: true,
+                      ),
                     _HeroMeta(
                       icon: Icons.event_rounded,
                       label: DateFormat.yMMMd().format(habit.startDate),
@@ -864,3 +922,80 @@ class _CompletionBanner extends StatelessWidget {
     );
   }
 }
+
+class _PausedBanner extends StatelessWidget {
+  const _PausedBanner({required this.habit, required this.onResume});
+
+  final Habit habit;
+  final VoidCallback onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
+    final dateStr = habit.pausedAt != null
+        ? DateFormat.MMMd().format(habit.pausedAt!)
+        : 'recently';
+
+    return GlassCard(
+      accent: p.warning,
+      padding: const EdgeInsets.all(AppTokens.space4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: p.warning.withValues(alpha: 0.16),
+                ),
+                child: Icon(
+                  Icons.pause_circle_filled_rounded,
+                  size: 24,
+                  color: p.warning,
+                ),
+              ),
+              const SizedBox(width: AppTokens.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Habit is Paused',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: p.warning,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Paused on $dateStr. Missed days won\'t be counted while paused.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTokens.space3),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: p.warning,
+                foregroundColor: Colors.black,
+              ),
+              onPressed: onResume,
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+              label: const Text('Resume Habit'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+

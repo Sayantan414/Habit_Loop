@@ -3,6 +3,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
@@ -23,6 +24,10 @@ void main() {
   testWidgets('shows empty state with no habits', (WidgetTester tester) async {
     await tester.runAsync(() async {
       TestWidgetsFlutterBinding.ensureInitialized();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('home_widget/updates'), (call) async => null);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('esys.flutter.home_widget'), (call) async => null);
       SharedPreferences.setMockInitialValues({});
 
       final tempDir = await Directory.systemTemp.createTemp('habit_loop_test');
@@ -53,7 +58,7 @@ void main() {
 
       await tester.pump();
 
-      expect(find.text('No habits yet'), findsOneWidget);
+      expect(find.text('Start your first loop'), findsOneWidget);
 
       await habitBox.close();
       await todoBox.close();

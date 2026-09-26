@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home screen widget tokens, light mode. Mirrors AppPalette.light. -->
+<resources>
+    <color name="widget_surface">#F2FFFFFF</color>
+    <color name="widget_row">#FFF1F5F9</color>
+    <color name="widget_stroke">#FFE2E8F0</color>
+    <color name="widget_track">#FFE2E8F0</color>
+    <color name="widget_text_primary">#FF0F172A</color>
+    <color name="widget_text_secondary">#FF475569</color>
+    <color name="widget_text_tertiary">#FF94A3B8</color>
+    <color name="widget_accent">#FF0891B2</color>
+    <color name="widget_success">#FF059669</color>
+    <color name="widget_warning">#FFD97706</color>
+</resources>

@@ -191,7 +191,7 @@ class NotificationService {
   }
 
   bool _remindsOn(Habit habit, DateTime day, {required bool isToday}) {
-    if (habit.archived || habit.isFinished) return false;
+    if (habit.archived || habit.isFinished || habit.isPaused) return false;
     if (isToday && habit.isCompletedToday) return false;
     final dayNumber = habit.dayNumberFor(day);
     if (dayNumber < 1) return false;

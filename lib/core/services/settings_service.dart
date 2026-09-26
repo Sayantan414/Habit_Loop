@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persists user preferences (theme + sound) to SharedPreferences.
+/// Persists user preferences (theme, sound, widget) to SharedPreferences.
 class SettingsService {
   SettingsService(this._prefs);
 

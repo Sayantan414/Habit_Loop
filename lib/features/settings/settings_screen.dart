@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import '../../core/services/widget_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
@@ -97,8 +100,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppTokens.space5),
 
-
-
           const SectionHeader(title: 'Habits'),
           GlassCard(
             padding: EdgeInsets.zero,
@@ -113,6 +114,10 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: AppTokens.space5),
+
+          if (Platform.isAndroid) ...[
+            const _WidgetSettingsCard(),
+          ],
 
           const SectionHeader(title: 'Data backup & restore'),
           GlassCard(
@@ -365,6 +370,53 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One-tap "add to home screen" on launchers that support pinning.
+class _WidgetSettingsCard extends StatelessWidget {
+  const _WidgetSettingsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+
+    return FutureBuilder<bool>(
+      future: WidgetService.canRequestPin(),
+      builder: (context, snapshot) {
+        if (snapshot.data != true) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SectionHeader(title: 'Home screen widget'),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              child: _SettingsRow(
+                icon: Icons.add_to_home_screen_rounded,
+                color: p.accent,
+                title: 'Add to home screen',
+                subtitle: 'Place the Today widget in one tap',
+                onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await WidgetService.requestPin();
+                  } catch (e) {
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Long-press your home screen → Widgets → Habit Loop',
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: AppTokens.space5),
+          ],
+        );
+      },
     );
   }
 }

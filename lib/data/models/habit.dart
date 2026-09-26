@@ -17,6 +17,8 @@ class Habit extends HiveObject {
     this.archived = false,
     this.isFixed = false,
     List<int>? reminderTimes,
+    this.isPaused = false,
+    this.pausedAt,
   }) : createdAt = createdAt ?? DateTime.now(),
        completedDays = completedDays ?? <int>[],
        reminderTimes = reminderTimes ?? <int>[];
@@ -61,6 +63,14 @@ class Habit extends HiveObject {
   @HiveField(9)
   List<int> reminderTimes;
 
+  /// True if the habit is currently paused (e.g. during vacation/break).
+  @HiveField(10)
+  bool isPaused;
+
+  /// The date/time when this habit was paused.
+  @HiveField(11)
+  DateTime? pausedAt;
+
   /// 1-based day number for [date], relative to [startDate].
   int dayNumberFor(DateTime date) {
     final start = DateTime(startDate.year, startDate.month, startDate.day);
@@ -86,9 +96,9 @@ class Habit extends HiveObject {
   int get effectiveTotalDays =>
       isFixed ? totalDays : (totalDays + missedDaysCount);
 
-  /// Whether today falls within the habit's active day range.
+  /// Whether today falls within the habit's active day range (and is not paused).
   bool get isActiveToday =>
-      todayDayNumber >= 1 && todayDayNumber <= effectiveTotalDays;
+      !isPaused && todayDayNumber >= 1 && todayDayNumber <= effectiveTotalDays;
 
   bool get isCompletedToday => completedDays.contains(todayDayNumber);
 
@@ -130,6 +140,8 @@ class Habit extends HiveObject {
       'archived': archived,
       'isFixed': isFixed,
       'reminderTimes': reminderTimes,
+      'isPaused': isPaused,
+      'pausedAt': pausedAt?.toIso8601String(),
     };
   }
 
@@ -151,6 +163,10 @@ class Habit extends HiveObject {
       reminderTimes: (json['reminderTimes'] as List<dynamic>?)
           ?.map((e) => (e as num).toInt())
           .toList(),
+      isPaused: json['isPaused'] as bool? ?? false,
+      pausedAt: json['pausedAt'] != null
+          ? DateTime.parse(json['pausedAt'] as String)
+          : null,
     );
   }
 }

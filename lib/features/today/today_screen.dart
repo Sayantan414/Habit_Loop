@@ -67,6 +67,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   Widget build(BuildContext context) {
     final active = ref.watch(activeHabitsProvider);
     final finished = ref.watch(finishedHabitsProvider);
+    final paused = ref.watch(pausedHabitsProvider);
     final summary = ref.watch(todaySummaryProvider);
 
     return SafeArea(
@@ -83,28 +84,29 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           const SizedBox(height: AppTokens.space5),
           _DailyProgressCard(summary: summary, habits: active),
           const SizedBox(height: AppTokens.space6),
-          if (active.isEmpty && finished.isEmpty)
+          if (active.isEmpty && finished.isEmpty && paused.isEmpty)
             _EmptyState(onAdd: () => AddHabitSheet.show(context))
           else ...[
-            SectionHeader(
-              title: "Today's habits",
-              count: active.length,
-              trailing: finished.isNotEmpty
-                  ? Pressable(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CompletedHabitsScreen(),
+            if (active.isNotEmpty || finished.isNotEmpty)
+              SectionHeader(
+                title: "Today's habits",
+                count: active.length,
+                trailing: finished.isNotEmpty
+                    ? Pressable(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CompletedHabitsScreen(),
+                          ),
                         ),
-                      ),
-                      scale: 0.92,
-                      child: TagChip(
-                        label: 'Completed (${finished.length}) ›',
-                        color: AppPalette.of(context).success,
-                        dense: true,
-                      ),
-                    )
-                  : null,
-            ),
+                        scale: 0.92,
+                        child: TagChip(
+                          label: 'Completed (${finished.length}) ›',
+                          color: AppPalette.of(context).success,
+                          dense: true,
+                        ),
+                      )
+                    : null,
+              ),
             for (final habit in active)
               Padding(
                 padding: const EdgeInsets.only(bottom: AppTokens.space3),
@@ -114,6 +116,65 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                   onCheckIn: () => _check(habit, habit.todayDayNumber),
                 ),
               ),
+            if (paused.isNotEmpty) ...[
+              const SizedBox(height: AppTokens.space6),
+              SectionHeader(
+                title: 'Paused habits',
+                count: paused.length,
+              ),
+              for (final habit in paused)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppTokens.space3),
+                  child: GlassCard(
+                    accent: AppPalette.of(context).warning,
+                    padding: const EdgeInsets.all(AppTokens.space4),
+                    onTap: () => _openDetail(habit),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.pause_circle_filled_rounded,
+                          color: AppPalette.of(context).warning,
+                          size: 24,
+                        ),
+                        const SizedBox(width: AppTokens.space3),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                habit.title,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Paused on ${DateFormat.MMMd().format(habit.pausedAt ?? DateTime.now())}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: AppTokens.space2),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            foregroundColor: AppPalette.of(context).warning,
+                            side: BorderSide(
+                              color: AppPalette.of(context).warning.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          onPressed: () async {
+                            await ref.read(habitsProvider.notifier).togglePause(habit);
+                          },
+                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                          label: const Text('Resume'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ],
         ],
       ),

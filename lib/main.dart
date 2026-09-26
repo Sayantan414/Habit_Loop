@@ -6,6 +6,7 @@ import 'app.dart';
 import 'core/providers.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/settings_service.dart';
+import 'core/services/widget_service.dart';
 import 'data/models/habit.dart';
 import 'data/repositories/habit_repository.dart';
 import 'data/models/todo.dart';
@@ -29,6 +30,7 @@ void main() async {
   final noteRepository = NoteRepository(noteBox);
 
   final settingsService = await SettingsService.create();
+  await WidgetService.setEnabled(true);
   await NotificationService.instance.init();
 
   runApp(

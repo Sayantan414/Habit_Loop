@@ -29,12 +29,10 @@ class NotificationService {
   static const markDoneActionId = 'mark_done';
 
   static const _daysAhead = 7;
-  static const _channelId = 'habit_reminders';
+  static const _legacyChannelIds = ['habit_reminders', 'habit_reminders_v2'];
   static const _channelName = 'Habit reminders';
   static const _channelDescription =
       'Reminders at the times you picked for each habit.';
-  static const _sound = RawResourceAndroidNotificationSound('habit_chime');
-  static final _vibration = Int64List.fromList([0, 180, 120, 180]);
 
   final _plugin = FlutterLocalNotificationsPlugin();
   final _responses = StreamController<NotificationResponse>.broadcast();
@@ -42,6 +40,14 @@ class NotificationService {
   bool _ready = false;
   List<Habit> _lastHabits = const [];
   Future<void> _syncQueue = Future.value();
+
+  bool _vibrationEnabled = true;
+  String _vibrationMode = 'subtle';
+  bool _notificationSoundEnabled = true;
+  String _notificationSound = 'chime';
+
+  String get _currentChannelId =>
+      'habit_reminders_${_notificationSound}_${_vibrationMode}_${_notificationSoundEnabled}_$_vibrationEnabled';
 
   /// The notification (or its action button) that cold-started the app, if any.
   NotificationResponse? launchResponse;
@@ -56,6 +62,119 @@ class NotificationService {
         AndroidFlutterLocalNotificationsPlugin
       >();
 
+  void updateVibration({required bool enabled, required String mode}) {
+    _vibrationEnabled = enabled;
+    _vibrationMode = mode;
+    if (_ready) {
+      _createChannel();
+      syncAll(_lastHabits);
+    }
+  }
+
+  void updateSound({required bool enabled, required String sound}) {
+    _notificationSoundEnabled = enabled;
+    _notificationSound = sound;
+    if (_ready) {
+      _createChannel();
+      syncAll(_lastHabits);
+    }
+  }
+
+  Int64List? _getVibrationPatternFor(String mode) {
+    if (!_vibrationEnabled) return null;
+    switch (mode) {
+      case 'pulse':
+        return Int64List.fromList([0, 150, 100, 150, 400, 150, 100, 150]);
+      case 'strong':
+        return Int64List.fromList([0, 400, 200, 400]);
+      case 'subtle':
+      default:
+        return Int64List.fromList([0, 100, 100, 100]);
+    }
+  }
+
+  Int64List? _getVibrationPattern() => _getVibrationPatternFor(_vibrationMode);
+
+  AndroidNotificationSound? _getSoundFor(String soundKey) {
+    if (!_notificationSoundEnabled) return null;
+    switch (soundKey) {
+      case 'chime':
+        return const RawResourceAndroidNotificationSound('habit_chime');
+      case 'bell':
+        return const RawResourceAndroidNotificationSound('habit_bell');
+      case 'zen':
+        return const RawResourceAndroidNotificationSound('habit_zen');
+      case 'system':
+      default:
+        return null;
+    }
+  }
+
+  AndroidNotificationSound? _getNotificationSound() =>
+      _getSoundFor(_notificationSound);
+
+  Future<void> showPreviewNotification({
+    String? sound,
+    String? vibrationMode,
+  }) async {
+    if (!isSupported || !_ready) return;
+    final targetSound = sound ?? _notificationSound;
+    final targetVibeMode = vibrationMode ?? _vibrationMode;
+    final previewChannelId =
+        'habit_preview_${targetSound}_${targetVibeMode}_${_notificationSoundEnabled}_$_vibrationEnabled';
+
+    final android = _android;
+    if (android != null) {
+      await android.createNotificationChannel(
+        AndroidNotificationChannel(
+          previewChannelId,
+          'Sound Preview ($targetSound)',
+          description: 'Preview of selected notification sound',
+          importance: Importance.max,
+          sound: _getSoundFor(targetSound),
+          enableVibration: _vibrationEnabled,
+          vibrationPattern: _getVibrationPatternFor(targetVibeMode),
+          playSound: _notificationSoundEnabled,
+        ),
+      );
+
+      await _plugin.show(
+        id: 888888,
+        title: 'Habit Loop',
+        body: 'Previewing ${targetSound[0].toUpperCase()}${targetSound.substring(1)} notification sound',
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            previewChannelId,
+            'Sound Preview ($targetSound)',
+            importance: Importance.max,
+            priority: Priority.max,
+            sound: _getSoundFor(targetSound),
+            enableVibration: _vibrationEnabled,
+            vibrationPattern: _getVibrationPatternFor(targetVibeMode),
+            playSound: _notificationSoundEnabled,
+            icon: 'ic_stat_habit',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _createChannel() async {
+    final android = _android;
+    if (android == null) return;
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        _currentChannelId,
+        _channelName,
+        description: _channelDescription,
+        importance: Importance.high,
+        sound: _getNotificationSound(),
+        enableVibration: _vibrationEnabled,
+        vibrationPattern: _getVibrationPattern(),
+      ),
+    );
+  }
+
   Future<void> init() async {
     if (!isSupported || _ready) return;
     try {
@@ -66,16 +185,10 @@ class NotificationService {
         ),
         onDidReceiveNotificationResponse: _responses.add,
       );
-      await _android?.createNotificationChannel(
-        AndroidNotificationChannel(
-          _channelId,
-          _channelName,
-          description: _channelDescription,
-          importance: Importance.high,
-          sound: _sound,
-          vibrationPattern: _vibration,
-        ),
-      );
+      for (final id in _legacyChannelIds) {
+        await _android?.deleteNotificationChannel(channelId: id);
+      }
+      await _createChannel();
       final launch = await _plugin.getNotificationAppLaunchDetails();
       if (launch?.didNotificationLaunchApp ?? false) {
         launchResponse = launch!.notificationResponse;
@@ -271,7 +384,7 @@ class NotificationService {
   ) {
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        _channelId,
+        _currentChannelId,
         _channelName,
         channelDescription: _channelDescription,
         importance: Importance.high,
@@ -280,8 +393,9 @@ class NotificationService {
         visibility: NotificationVisibility.public,
         icon: 'ic_stat_habit',
         color: AppAccents.resolve(habit.colorValue, Brightness.light),
-        sound: _sound,
-        vibrationPattern: _vibration,
+        sound: _getNotificationSound(),
+        enableVibration: _vibrationEnabled,
+        vibrationPattern: _getVibrationPattern(),
         subText: message.summary,
         ticker: message.title,
         styleInformation: BigTextStyleInformation(

@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import 'manage_habits_screen.dart';
+import 'notification_settings_screen.dart';
 
 /// SCREEN 6 — Settings and data backup.
 ///
@@ -115,9 +116,24 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppTokens.space5),
 
-          if (Platform.isAndroid) ...[
-            const _WidgetSettingsCard(),
-          ],
+          const SectionHeader(title: 'Notifications'),
+          GlassCard(
+            padding: EdgeInsets.zero,
+            child: _SettingsRow(
+              icon: Icons.notifications_active_rounded,
+              color: p.accentAlt,
+              title: 'Sound & vibration',
+              subtitle: 'Notification tones, vibration modes & toggles',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppTokens.space5),
+
+          if (Platform.isAndroid) ...[const _WidgetSettingsCard()],
 
           const SectionHeader(title: 'Data backup & restore'),
           GlassCard(
@@ -155,17 +171,39 @@ class SettingsScreen extends ConsumerWidget {
           Center(
             child: Column(
               children: [
-                Icon(Icons.loop_rounded, size: 22, color: p.textTertiary),
+                Icon(Icons.loop_rounded, size: 24, color: p.textTertiary),
                 const SizedBox(height: AppTokens.space2),
                 Text(
                   'Habit Loop',
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: p.textSecondary),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: p.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3,
+                  ),
                 ),
-                Text(
-                  'Build your streaks, one day at a time.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: p.textTertiary),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text.rich(
+                    TextSpan(
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: p.textTertiary,
+                        fontSize: 11.5,
+                      ),
+                      children: [
+                        const TextSpan(text: 'Crafted by '),
+                        TextSpan(
+                          text: 'Sayantan Sadhu',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: p.textSecondary,
+                          ),
+                        ),
+                        const TextSpan(text: ' to build your daily streaks.'),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ],
             ),
@@ -181,8 +219,9 @@ class SettingsScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final backupService = ref.read(backupServiceProvider);
-      final savedPath =
-          await ref.read(habitsProvider.notifier).exportBackupToFile(backupService);
+      final savedPath = await ref
+          .read(habitsProvider.notifier)
+          .exportBackupToFile(backupService);
       if (savedPath == null || !context.mounted) return;
 
       await showDialog<void>(
@@ -190,8 +229,11 @@ class SettingsScreen extends ConsumerWidget {
         builder: (ctx) => AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.check_circle_rounded,
-                  color: AppPalette.of(ctx).success, size: 22),
+              Icon(
+                Icons.check_circle_rounded,
+                color: AppPalette.of(ctx).success,
+                size: 22,
+              ),
               const SizedBox(width: 10),
               const Text('Backup saved'),
             ],
@@ -205,9 +247,9 @@ class SettingsScreen extends ConsumerWidget {
               SelectableText(
                 savedPath,
                 style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppPalette.of(ctx).textPrimary,
-                    ),
+                  fontWeight: FontWeight.w600,
+                  color: AppPalette.of(ctx).textPrimary,
+                ),
               ),
             ],
           ),
@@ -286,8 +328,9 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         trailing: const Text('Restore'),
                         onTap: () async {
-                          final content =
-                              await backupService.readJsonFromFile(file);
+                          final content = await backupService.readJsonFromFile(
+                            file,
+                          );
                           if (content == null || content.isEmpty) return;
                           await ref
                               .read(habitsProvider.notifier)

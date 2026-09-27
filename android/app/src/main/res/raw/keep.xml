@@ -2,4 +2,4 @@
 <!-- Stop R8 from stripping resources that are only referenced by name from
      Dart (notification icon + reminder sound). -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_stat_habit,@raw/habit_chime" />
+    tools:keep="@drawable/ic_stat_habit,@raw/habit_chime,@raw/habit_bell,@raw/habit_zen" />

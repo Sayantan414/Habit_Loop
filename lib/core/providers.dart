@@ -83,6 +83,82 @@ final soundEnabledProvider = StateNotifierProvider<SoundEnabledNotifier, bool>((
   return SoundEnabledNotifier(ref.watch(settingsServiceProvider), ref.watch(soundServiceProvider));
 });
 
+class VibrationEnabledNotifier extends StateNotifier<bool> {
+  VibrationEnabledNotifier(this._settings) : super(_settings.getVibrationEnabled());
+  final SettingsService _settings;
+
+  Future<void> setEnabled(bool enabled) async {
+    state = enabled;
+    await _settings.setVibrationEnabled(enabled);
+    NotificationService.instance.updateVibration(
+      enabled: enabled,
+      mode: _settings.getVibrationMode(),
+    );
+  }
+}
+
+final vibrationEnabledProvider = StateNotifierProvider<VibrationEnabledNotifier, bool>((ref) {
+  return VibrationEnabledNotifier(ref.watch(settingsServiceProvider));
+});
+
+class VibrationModeNotifier extends StateNotifier<String> {
+  VibrationModeNotifier(this._settings) : super(_settings.getVibrationMode());
+  final SettingsService _settings;
+
+  Future<void> setMode(String mode) async {
+    state = mode;
+    await _settings.setVibrationMode(mode);
+    NotificationService.instance.updateVibration(
+      enabled: _settings.getVibrationEnabled(),
+      mode: mode,
+    );
+  }
+}
+
+final vibrationModeProvider = StateNotifierProvider<VibrationModeNotifier, String>((ref) {
+  return VibrationModeNotifier(ref.watch(settingsServiceProvider));
+});
+
+class NotificationSoundEnabledNotifier extends StateNotifier<bool> {
+  NotificationSoundEnabledNotifier(this._settings)
+      : super(_settings.getNotificationSoundEnabled());
+  final SettingsService _settings;
+
+  Future<void> setEnabled(bool enabled) async {
+    state = enabled;
+    await _settings.setNotificationSoundEnabled(enabled);
+    NotificationService.instance.updateSound(
+      enabled: enabled,
+      sound: _settings.getNotificationSound(),
+    );
+  }
+}
+
+final notificationSoundEnabledProvider =
+    StateNotifierProvider<NotificationSoundEnabledNotifier, bool>((ref) {
+  return NotificationSoundEnabledNotifier(ref.watch(settingsServiceProvider));
+});
+
+class NotificationSoundNotifier extends StateNotifier<String> {
+  NotificationSoundNotifier(this._settings)
+      : super(_settings.getNotificationSound());
+  final SettingsService _settings;
+
+  Future<void> setSound(String sound) async {
+    state = sound;
+    await _settings.setNotificationSound(sound);
+    NotificationService.instance.updateSound(
+      enabled: _settings.getNotificationSoundEnabled(),
+      sound: sound,
+    );
+  }
+}
+
+final notificationSoundProvider =
+    StateNotifierProvider<NotificationSoundNotifier, String>((ref) {
+  return NotificationSoundNotifier(ref.watch(settingsServiceProvider));
+});
+
 class HabitsNotifier extends StateNotifier<List<Habit>> {
   HabitsNotifier(this._repo, this._todoRepo, this._noteRepo, this._ref) : super(_repo.getAll()) {
     WidgetService.updateHabits(state);

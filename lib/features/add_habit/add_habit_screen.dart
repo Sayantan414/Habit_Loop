@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
 import '../../core/services/notification_service.dart';
+import '../../core/services/reels_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/habit.dart';
 import '../../widgets/app_background.dart';
@@ -14,13 +15,26 @@ import '../../widgets/reminder_times_picker.dart';
 
 /// SCREEN 3 — Create or edit a habit.
 class AddHabitScreen extends ConsumerStatefulWidget {
-  const AddHabitScreen({super.key, this.habit});
+  const AddHabitScreen({super.key, this.habit, this.startAsReelsHabit = false});
 
   final Habit? habit;
 
-  static Future<void> push(BuildContext context, {Habit? habit}) {
+  /// Opens a new Quit habit with "Track reels automatically" already on
+  /// (used by the Reels counter screen's shortcut).
+  final bool startAsReelsHabit;
+
+  static Future<void> push(
+    BuildContext context, {
+    Habit? habit,
+    bool startAsReelsHabit = false,
+  }) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
+      MaterialPageRoute(
+        builder: (_) => AddHabitScreen(
+          habit: habit,
+          startAsReelsHabit: startAsReelsHabit,
+        ),
+      ),
     );
   }
 
@@ -53,6 +67,15 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
 
   final _titleController = TextEditingController();
   final _customDaysController = TextEditingController();
+  final _reelsTargetController = TextEditingController(text: '50');
+
+  /// Quit habits only: count reels automatically, slipping on days over
+  /// the target typed into [_reelsTargetController].
+  bool _trackReels = false;
+
+  /// True while the title is the one generated from the reels target, so it
+  /// keeps following the target until the user types their own.
+  bool _autoTitle = false;
 
   int _days = 21;
   bool _customDays = false;
@@ -68,6 +91,12 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.habit == null && widget.startAsReelsHabit) {
+      _isBad = true;
+      _days = _quitPresets.last.days;
+      _setTrackReels(true);
+    }
+
     _titleController.addListener(() => setState(() {}));
 
     if (widget.habit != null) {
@@ -76,6 +105,10 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       _isFixed = h.isFixed;
       _isBad = h.isBad;
       _isStrict = h.isStrict;
+      if (h.isReelsHabit) {
+        _trackReels = true;
+        _reelsTargetController.text = '${h.reelsTarget}';
+      }
       _startDate = h.startDate;
       _reminderTimes = List<int>.from(h.reminderTimes);
 
@@ -104,7 +137,39 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   void dispose() {
     _titleController.dispose();
     _customDaysController.dispose();
+    _reelsTargetController.dispose();
     super.dispose();
+  }
+
+  int? get _reelsTarget {
+    final parsed = int.tryParse(_reelsTargetController.text.trim());
+    if (parsed == null || parsed < 1 || parsed > 999) return null;
+    return parsed;
+  }
+
+  String _reelsTitle(int target) => 'Max $target reels a day';
+
+  void _setTrackReels(bool on) {
+    _trackReels = on;
+    _error = null;
+    final title = _titleController.text.trim();
+    if (on && title.isEmpty) {
+      _titleController.text = _reelsTitle(_reelsTarget ?? 50);
+      _autoTitle = true;
+    } else if (!on && _autoTitle) {
+      _titleController.clear();
+      _autoTitle = false;
+    }
+  }
+
+  void _onReelsTargetChanged(String _) {
+    setState(() {
+      _error = null;
+      final target = _reelsTarget;
+      if (_autoTitle && target != null) {
+        _titleController.text = _reelsTitle(target);
+      }
+    });
   }
 
   AccentSwatch get _swatch => AppAccents.swatches[_accentIndex];
@@ -126,6 +191,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
     setState(() {
       _isBad = isBad;
       if (!isBad) _isStrict = false;
+      if (!isBad && _trackReels) _setTrackReels(false);
       if (!_customDays) _days = _presets.first.days;
       _error = null;
     });
@@ -155,6 +221,11 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       );
       return;
     }
+    final reelsTarget = _isBad && _trackReels ? _reelsTarget : null;
+    if (_isBad && _trackReels && reelsTarget == null) {
+      setState(() => _error = 'Enter a reels target between 1 and 999.');
+      return;
+    }
 
     setState(() {
       _error = null;
@@ -170,6 +241,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       h.colorValue = _swatch.id;
       h.isFixed = _isFixed;
       h.isStrict = _isBad && _isStrict;
+      h.reelsTarget = reelsTarget;
       h.reminderTimes = _reminderTimes.toList()..sort();
 
       await ref.read(habitsProvider.notifier).updateHabit(h);
@@ -191,6 +263,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
             reminderTimes: _reminderTimes,
             isBad: _isBad,
             isStrict: _isStrict,
+            reelsTarget: reelsTarget,
           );
       if (_reminderTimes.isNotEmpty) {
         await NotificationService.instance.requestPermissions();
@@ -262,9 +335,27 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                       const SizedBox(height: AppTokens.space5),
                     ],
 
+                    if (_isBad &&
+                        ReelsService.isSupported &&
+                        (widget.habit == null || _trackReels)) ...[
+                      _FieldLabel('Track automatically'),
+                      _ReelsTrackingCard(
+                        color: color,
+                        enabled: _trackReels,
+                        // An existing habit can't switch its slips between
+                        // manual and automatic; only the target can change.
+                        canToggle: widget.habit == null,
+                        targetController: _reelsTargetController,
+                        onToggle: (on) => setState(() => _setTrackReels(on)),
+                        onTargetChanged: _onReelsTargetChanged,
+                      ),
+                      const SizedBox(height: AppTokens.space5),
+                    ],
+
                     _FieldLabel('Habit title'),
                     TextField(
                       controller: _titleController,
+                      onChanged: (_) => _autoTitle = false,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.done,
                       onTapOutside: (_) =>
@@ -531,6 +622,89 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "Count reels for me" option on a Quit habit: a switch plus the daily
+/// reels target. Days over the target become slips automatically.
+class _ReelsTrackingCard extends StatelessWidget {
+  const _ReelsTrackingCard({
+    required this.color,
+    required this.enabled,
+    required this.canToggle,
+    required this.targetController,
+    required this.onToggle,
+    required this.onTargetChanged,
+  });
+
+  final Color color;
+  final bool enabled;
+  final bool canToggle;
+  final TextEditingController targetController;
+  final ValueChanged<bool> onToggle;
+  final ValueChanged<String> onTargetChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
+
+    return GlassCard(
+      accent: color,
+      highlighted: enabled,
+      padding: const EdgeInsets.all(AppTokens.space4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.slow_motion_video_rounded, color: color),
+              const SizedBox(width: AppTokens.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Reels', style: theme.textTheme.titleSmall),
+                    Text(
+                      'Uses the reels counter — no need to log slips',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (canToggle) Switch(value: enabled, onChanged: onToggle),
+            ],
+          ),
+          if (enabled) ...[
+            const SizedBox(height: AppTokens.space4),
+            TextField(
+              controller: targetController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(3),
+              ],
+              onChanged: onTargetChanged,
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
+              decoration: const InputDecoration(
+                labelText: 'Max reels per day',
+                suffixText: 'reels',
+                prefixIcon: Icon(Icons.flag_rounded, size: 19),
+              ),
+            ),
+            const SizedBox(height: AppTokens.space2),
+            Text(
+              'Any day you go over this is logged as a slip, counted across '
+              'the apps tracked in Settings → Reels counter.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: p.textSecondary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

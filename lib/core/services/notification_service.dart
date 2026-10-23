@@ -216,6 +216,13 @@ class NotificationService {
     }
   }
 
+  /// Asks only for permission to post notifications (Android 13+), for
+  /// alerts that aren't scheduled, like the reels-limit nudge.
+  Future<bool> requestPostPermission() async {
+    if (!_ready) return false;
+    return await _android?.requestNotificationsPermission() ?? false;
+  }
+
   /// Asks for notification permission, plus exact-alarm access so reminders
   /// fire on the minute. Returns false if notifications stay blocked.
   Future<bool> requestPermissions() async {
@@ -363,10 +370,12 @@ class NotificationService {
     // Assumes no slips between now and [dayNumber]; re-synced on every change.
     final clean = habit.currentStreak + (dayNumber - habit.todayDayNumber);
 
-    const lines = [
+    final lines = [
       "Cravings pass. You've got this.",
       'Every clean day makes the next one easier.',
-      'Only open the app if you slipped — otherwise, keep going.',
+      habit.isReelsHabit
+          ? 'Stay under ${habit.reelsTarget} reels today. Habit Loop keeps count for you.'
+          : 'Only open the app if you slipped — otherwise, keep going.',
       'One day at a time. Today counts.',
     ];
     return (

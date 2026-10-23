@@ -99,17 +99,24 @@ class HabitCard extends StatelessWidget {
 /// There is nothing to check in: the day counts as clean unless a slip is
 /// logged, so the only control is a quiet "Slipped" button (confirmed before
 /// it counts). Once slipped, the same button undoes it.
+///
+/// A reels habit has no button: it shows today's reels against its target,
+/// and slips are logged by the reels counter.
 class AvoidHabitCard extends StatelessWidget {
   const AvoidHabitCard({
     super.key,
     required this.habit,
     required this.onTap,
     required this.onSlip,
+    this.reelsToday,
   });
 
   final Habit habit;
   final VoidCallback onTap;
   final VoidCallback onSlip;
+
+  /// Today's reels across tracked apps, for a reels habit.
+  final int? reelsToday;
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +126,19 @@ class AvoidHabitCard extends StatelessWidget {
     final slipped = habit.isSlippedToday;
     final streak = habit.currentStreak;
     final dayNumber = habit.todayDayNumber.clamp(1, habit.effectiveTotalDays);
+    final target = habit.reelsTarget;
+    final reels = reelsToday ?? 0;
+
+    final String status;
+    if (habit.isReelsHabit) {
+      status = slipped
+          ? 'Over $target reels today — tomorrow is a fresh start.'
+          : '$reels of $target reels today';
+    } else {
+      status = slipped
+          ? 'Slipped today — tomorrow is a fresh start.'
+          : 'Clean so far today';
+    }
 
     return GlassCard(
       onTap: onTap,
@@ -169,9 +189,7 @@ class AvoidHabitCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      slipped
-                          ? 'Slipped today — tomorrow is a fresh start.'
-                          : 'Clean so far today',
+                      status,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: slipped ? p.textTertiary : p.textSecondary,
                       ),
@@ -180,7 +198,14 @@ class AvoidHabitCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              OutlinedButton(
+              if (habit.isReelsHabit)
+                TagChip(
+                  label: '$reels / $target',
+                  icon: Icons.slow_motion_video_rounded,
+                  color: slipped ? p.danger : color,
+                )
+              else
+                OutlinedButton(
                 onPressed: onSlip,
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,

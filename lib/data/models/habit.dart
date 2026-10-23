@@ -25,6 +25,7 @@ class Habit extends HiveObject {
     this.isBad = false,
     List<int>? slipDays,
     this.isStrict = false,
+    this.reelsTarget,
   }) : createdAt = createdAt ?? DateTime.now(),
        completedDays = completedDays ?? <int>[],
        reminderTimes = reminderTimes ?? <int>[],
@@ -91,6 +92,20 @@ class Habit extends HiveObject {
   /// [isFixed].
   @HiveField(14, defaultValue: false)
   bool isStrict;
+
+  /// Bad habits only: the most reels allowed per day. When set, the habit
+  /// tracks itself from the reels counter — any day over the target is
+  /// logged as a slip automatically, and slips can't be logged by hand.
+  @HiveField(15)
+  int? reelsTarget;
+
+  bool get isReelsHabit => isBad && reelsTarget != null;
+
+  /// The calendar date of [dayNumber] (day 1 = [startDate]).
+  DateTime dateOfDay(int dayNumber) {
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    return DateTime(start.year, start.month, start.day + dayNumber - 1);
+  }
 
   /// 1-based day number for [date], relative to [startDate].
   int dayNumberFor(DateTime date) {
@@ -225,6 +240,7 @@ class Habit extends HiveObject {
       'isBad': isBad,
       'slipDays': slipDays,
       'isStrict': isStrict,
+      'reelsTarget': reelsTarget,
     };
   }
 
@@ -255,6 +271,7 @@ class Habit extends HiveObject {
           ?.map((e) => (e as num).toInt())
           .toList(),
       isStrict: json['isStrict'] as bool? ?? false,
+      reelsTarget: (json['reelsTarget'] as num?)?.toInt(),
     );
   }
 }

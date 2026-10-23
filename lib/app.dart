@@ -60,6 +60,8 @@ class _HabitLoopAppState extends ConsumerState<HabitLoopApp>
     // Tops up the rolling reminder window and catches day rollovers.
     if (state == AppLifecycleState.resumed) {
       ref.read(habitsProvider.notifier).refreshReminders();
+      // Today's reels count feeds the reels habit card on the Today screen.
+      ref.read(reelsProvider.notifier).refresh();
     }
   }
 

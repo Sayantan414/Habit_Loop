@@ -9,6 +9,7 @@ import '../../core/services/widget_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
+import '../reels/reels_screen.dart';
 import 'manage_habits_screen.dart';
 import 'notification_settings_screen.dart';
 
@@ -133,7 +134,23 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppTokens.space5),
 
-          if (Platform.isAndroid) ...[const _WidgetSettingsCard()],
+          if (Platform.isAndroid) ...[
+            const SectionHeader(title: 'Digital wellbeing'),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              child: _SettingsRow(
+                icon: Icons.slow_motion_video_rounded,
+                color: p.warning,
+                title: 'Reels counter',
+                subtitle: 'Count reels & shorts you swipe through each day',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ReelsScreen()),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppTokens.space5),
+            const _WidgetSettingsCard(),
+          ],
 
           const SectionHeader(title: 'Data backup & restore'),
           GlassCard(

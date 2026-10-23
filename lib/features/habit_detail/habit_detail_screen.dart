@@ -198,7 +198,12 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                           // Pulsing would invite a tap, and for a bad habit
                           // a tap on today means logging a slip.
                           pulse: habit.isBad ? null : _pulse,
-                          onTap: habit.isBad && !habit.isPaused
+                          onTap: habit.isReelsHabit
+                              ? () => _nudge(
+                                  'Slips are logged automatically on days '
+                                  'over ${habit.reelsTarget} reels.',
+                                )
+                              : habit.isBad && !habit.isPaused
                               ? (dayNumber <= today
                                     ? () => toggleSlipWithConfirm(
                                         context,
@@ -463,6 +468,12 @@ class _HeroHeader extends StatelessWidget {
                             : '${habit.currentStreak} day streak',
                         color: p.warning,
                         bold: true,
+                      ),
+                    if (habit.isReelsHabit)
+                      _HeroMeta(
+                        icon: Icons.slow_motion_video_rounded,
+                        label: 'Max ${habit.reelsTarget} reels/day',
+                        color: p.textSecondary,
                       ),
                     _HeroMeta(
                       icon: Icons.event_rounded,

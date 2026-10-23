@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Starts listening to Habit Loop only; ReelsCounterService swaps in the
+     user's selected apps as soon as it connects. Only scroll events are
+     requested, which keeps the service idle almost all the time. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/reels_service_description"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="150"
+    android:packageNames="com.sayantan.habitloop.habit_loop" />

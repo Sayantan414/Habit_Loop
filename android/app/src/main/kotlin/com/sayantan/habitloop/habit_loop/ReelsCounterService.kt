@@ -73,6 +73,15 @@ class ReelsCounterService : AccessibilityService() {
             "com.eterno.shortvideos",  // Josh
         )
 
+        /**
+         * Apps that strip their view ids (the log shows "name removed"). Their
+         * reels player is told from the feed by shape instead: it fills the
+         * screen, scrolls vertically and shows exactly one item at a time,
+         * while the feed shows several posts and the tab pager moves sideways.
+         */
+        private val ID_LESS_PACKAGES = setOf("com.facebook.katana")
+        private const val FULL_SCREEN_RATIO = 0.85f
+
         /** View-id fragments used by reels players (e.g. Instagram `clips_viewer_view_pager`). */
         private val REEL_ID_KEYWORDS = listOf("reel", "clips", "shorts", "spotlight")
 
@@ -157,6 +166,12 @@ class ReelsCounterService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName) return
+        // Shows in the log whether an app sends anything at all, which tells
+        // "never scrolls" apart from "scrolls, but not recognised as reels".
+        logOnce(
+            "$pkg|type|${event.eventType}",
+            "$pkg · sends ${AccessibilityEvent.eventTypeToString(event.eventType)}",
+        )
 
         // YouTube is counted by page only: its Shorts pager also scrolls, but
         // without item indexes, so the scroll path would count every swipe a
@@ -178,7 +193,7 @@ class ReelsCounterService : AccessibilityService() {
             return
         }
         val isReels = try {
-            isReelsPlayer(pkg, source, event.fromIndex)
+            isReelsPlayer(pkg, source, event)
         } finally {
             recycle(source)
         }
@@ -222,26 +237,61 @@ class ReelsCounterService : AccessibilityService() {
         }
     }
 
-    private fun isReelsPlayer(pkg: String, node: AccessibilityNodeInfo, index: Int): Boolean {
+    private fun isReelsPlayer(pkg: String, node: AccessibilityNodeInfo, event: AccessibilityEvent): Boolean {
         val id = node.viewIdResourceName?.substringAfter(":id/")?.lowercase(Locale.US) ?: ""
         val ratio = heightRatio(node)
+        val className = node.className?.toString()?.substringAfterLast('.') ?: "?"
+        val index = event.fromIndex
+        // Items on screen; -1 when the app doesn't say.
+        val visible = if (index >= 0 && event.toIndex >= index) event.toIndex - index + 1 else -1
+        val direction = scrollDirection(event)
 
         val isReels = when {
             ratio < MIN_HEIGHT_RATIO -> false
             pkg in WHOLE_APP_PACKAGES -> true
+            pkg in ID_LESS_PACKAGES ->
+                ratio >= FULL_SCREEN_RATIO &&
+                    visible == 1 &&
+                    direction != Direction.SIDEWAYS &&
+                    // Without direction info, a classic ViewPager is a tab pager.
+                    (direction == Direction.VERTICAL || className != "ViewPager")
             else -> REEL_ID_KEYWORDS.any { id.contains(it) }
         }
 
-        val className = node.className?.toString()?.substringAfterLast('.') ?: "?"
         val heightPct = (ratio * 100).toInt()
         val label = id.ifEmpty { "(no id)" }
         val indexInfo = if (index >= 0) "index" else "no index"
+        val items = when {
+            visible < 0 -> "items ?"
+            visible == 1 -> "1 item"
+            else -> "$visible items"
+        }
         val verdict = if (isReels) "REELS" else "feed"
         logOnce(
-            "$pkg|$id|$className|${heightPct / 5}|${index >= 0}|$isReels",
-            "$pkg · $label · $className · $heightPct% · $indexInfo · $verdict",
+            "$pkg|$id|$className|${heightPct / 5}|${index >= 0}|${visible.coerceAtMost(2)}|$direction|$isReels",
+            "$pkg · $label · $className · $heightPct% · $indexInfo · $items · " +
+                "${direction.label} · $verdict",
         )
         return isReels
+    }
+
+    private enum class Direction(val label: String) {
+        VERTICAL("up/down"),
+        SIDEWAYS("sideways"),
+        UNKNOWN("direction ?"),
+    }
+
+    /** Which way the container moved, from the event's scroll deltas (Android 9+). */
+    private fun scrollDirection(event: AccessibilityEvent): Direction {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return Direction.UNKNOWN
+        // -1 means "not reported".
+        val dx = event.scrollDeltaX.takeIf { it != -1 } ?: 0
+        val dy = event.scrollDeltaY.takeIf { it != -1 } ?: 0
+        return when {
+            dx == 0 && dy == 0 -> Direction.UNKNOWN
+            kotlin.math.abs(dy) >= kotlin.math.abs(dx) -> Direction.VERTICAL
+            else -> Direction.SIDEWAYS
+        }
     }
 
     // -------------------------------------------------------------- page-based
@@ -411,6 +461,9 @@ class ReelsCounterService : AccessibilityService() {
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) node.recycle()
     }
+
+    /** Lets every kind of line be logged again, after the user clears the log. */
+    fun resetLog() = loggedKeys.clear()
 
     /** Writes [line] to the detection log once per service run, to help tune detection. */
     private fun logOnce(key: String, line: String) {

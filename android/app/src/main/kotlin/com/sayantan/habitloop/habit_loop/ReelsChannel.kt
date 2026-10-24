@@ -63,6 +63,7 @@ object ReelsChannel {
 
                 "clearDetectionLog" -> {
                     ReelsStore.clearLog(app)
+                    ReelsCounterService.instance?.resetLog()
                     result.success(null)
                 }
 

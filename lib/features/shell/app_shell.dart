@@ -181,6 +181,19 @@ class _NavDestination {
   final IconData icon;
 }
 
+/// Width of the floating nav bar: sized to content on wide screens, and
+/// shrunk to fit on narrow phones so the bar never overflows its 16pt side
+/// margins. Android can report a zero screen width for the first frame while
+/// the window is still being laid out, so it never goes below zero.
+@visibleForTesting
+double floatingNavBarWidth(double screenWidth, int destinationCount) {
+  final available = screenWidth - AppTokens.space8;
+  return math.max(
+    0.0,
+    math.min(available, _FloatingNavBar._maxItemWidth * destinationCount),
+  );
+}
+
 class _FloatingNavBar extends StatelessWidget {
   const _FloatingNavBar({
     required this.index,
@@ -199,10 +212,10 @@ class _FloatingNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
 
-    // Sized to content on wide screens, and shrunk to fit on narrow phones so
-    // the bar never overflows its 16pt side margins.
-    final available = MediaQuery.sizeOf(context).width - AppTokens.space8;
-    final width = math.min(available, _maxItemWidth * destinations.length);
+    final width = floatingNavBarWidth(
+      MediaQuery.sizeOf(context).width,
+      destinations.length,
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: AppTokens.space4),

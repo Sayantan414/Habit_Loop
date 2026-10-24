@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/services/speech_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/note.dart';
 import '../../widgets/app_background.dart';
+import '../../widgets/dictation_button.dart';
 import '../../widgets/pressable.dart';
 
 /// SCREEN 5b — Note editor.
@@ -17,9 +19,12 @@ import '../../widgets/pressable.dart';
 /// persistent UI is a thin status strip (saved state, timestamp, word count)
 /// so the writer always knows the note is safe without pressing anything.
 class NoteEditorScreen extends ConsumerStatefulWidget {
-  const NoteEditorScreen({super.key, this.note});
+  const NoteEditorScreen({super.key, this.note, this.startDictation = false});
 
   final Note? note;
+
+  /// Opens straight into voice dictation (the "Voice note" shortcut).
+  final bool startDictation;
 
   @override
   ConsumerState<NoteEditorScreen> createState() => _NoteEditorScreenState();
@@ -32,6 +37,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   Timer? _debounceTimer;
   bool _isSaving = false;
 
+  late final DictationController _dictation;
+
+  /// The content as it was when dictation started; spoken words are laid
+  /// into it at the cursor, so live corrections replace rather than pile up.
+  TextEditingValue? _dictationBase;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +52,95 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
     _titleController.addListener(_onTextChanged);
     _contentController.addListener(_onTextChanged);
+
+    _dictation = DictationController(ref.read(speechEngineProvider))
+      ..addListener(_onDictation)
+      ..onProblem = _showDictationProblem
+      ..onRecovered = _insertRecovered
+      ..onOfferDownload = _offerSpeechDownload;
+    if (widget.startDictation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _toggleDictation());
+    }
+  }
+
+  Future<void> _toggleDictation() async {
+    if (_dictation.isListening) {
+      await _dictation.stop();
+      return;
+    }
+    _dictationBase = _contentController.value;
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _dictation.start(localeId: ref.read(dictationLocaleProvider));
+  }
+
+  void _onDictation() {
+    final base = _dictationBase;
+    if (base != null && _dictation.text.isNotEmpty) {
+      _contentController.value = insertDictation(base, _dictation.text);
+    }
+    if (!_dictation.isListening) _dictationBase = null;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _cycleDictationLocale() async {
+    final locales = dictationLocales.keys.toList();
+    final current = ref.read(dictationLocaleProvider);
+    final next = locales[(locales.indexOf(current) + 1) % locales.length];
+    await ref.read(dictationLocaleProvider.notifier).setLocale(next);
+    await _dictation.switchLocale(next);
+  }
+
+  void _offerSpeechDownload(String localeId) {
+    if (!mounted) return;
+    final language = localeId.startsWith('bn') ? 'Bengali' : 'English';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Download $language for offline dictation that keeps '
+            'listening through pauses?',
+          ),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Download',
+            onPressed: () => _dictation.downloadLanguage(localeId),
+          ),
+        ),
+      );
+  }
+
+  /// A failed Gemini recording can be retried from the message itself.
+  void _showDictationProblem(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: Duration(seconds: _dictation.canRetry ? 10 : 4),
+          action: _dictation.canRetry
+              ? SnackBarAction(label: 'Retry', onPressed: _dictation.retryFailed)
+              : null,
+        ),
+      );
+  }
+
+  /// Text from a retried recording goes in at the cursor.
+  void _insertRecovered(String text) {
+    if (!mounted) return;
+    _contentController.value = insertDictation(_contentController.value, text);
+  }
+
+  Future<void> _showSpeechDetails() async {
+    _showMessage(await _dictation.describe());
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _onTextChanged() {
@@ -92,6 +192,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _dictation
+      ..removeListener(_onDictation)
+      ..dispose();
     _titleController.removeListener(_onTextChanged);
     _contentController.removeListener(_onTextChanged);
     _titleController.dispose();
@@ -240,7 +343,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                             textCapitalization: TextCapitalization.sentences,
                             maxLines: null,
                             expands: true,
-                            autofocus: widget.note == null,
+                            autofocus:
+                                widget.note == null && !widget.startDictation,
+                            // Typing takes over from the mic.
+                            onTap: () {
+                              if (_dictation.isListening) _dictation.stop();
+                            },
                             textAlignVertical: TextAlignVertical.top,
                             style: theme.textTheme.bodyLarge?.copyWith(
                               height: 1.65,
@@ -268,14 +376,30 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppTokens.gutter,
-                    vertical: 12,
+                    vertical: AppTokens.space2,
                   ),
                   decoration: BoxDecoration(
                     border: Border(top: BorderSide(color: p.stroke)),
                   ),
                   child: Row(
                     children: [
-                      if (_isSaving) ...[
+                      if (_dictation.isListening) ...[
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: p.danger,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                            _dictation.isFinishing
+                                ? 'Transcribing…'
+                                : 'Listening…',
+                            style: theme.textTheme.labelMedium
+                                ?.copyWith(color: p.danger)),
+                      ] else if (_isSaving) ...[
                         SizedBox(
                           width: 12,
                           height: 12,
@@ -310,6 +434,14 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                           color: p.textSecondary,
                           fontFeatures: AppTypography.tabular,
                         ),
+                      ),
+                      const SizedBox(width: AppTokens.space3),
+                      DictationControls(
+                        isListening: _dictation.isListening,
+                        localeId: ref.watch(dictationLocaleProvider),
+                        onMicTap: _toggleDictation,
+                        onLocaleTap: _cycleDictationLocale,
+                        onLocaleLongPress: _showSpeechDetails,
                       ),
                     ],
                   ),

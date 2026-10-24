@@ -61,6 +61,16 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
+  /// Long-press on the Notes FAB: a new note that starts listening at once.
+  void _onFabLongPressed() {
+    if (_index != 2) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NoteEditorScreen(startDictation: true),
+      ),
+    );
+  }
+
   void _onNavSelected(int i) {
     if (_index == i) return;
     setState(() => _index = i);
@@ -141,6 +151,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     label: _index == 2 ? 'New note' : 'New habit',
                     color: p.accent,
                     onPressed: showFab ? _onFabPressed : null,
+                    onLongPressed: showFab ? _onFabLongPressed : null,
                   ),
                 ),
               ),
@@ -361,12 +372,14 @@ class _ContextualFab extends StatelessWidget {
     required this.label,
     required this.color,
     required this.onPressed,
+    this.onLongPressed,
   });
 
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -375,6 +388,7 @@ class _ContextualFab extends StatelessWidget {
 
     return Pressable(
       onTap: onPressed,
+      onLongPress: onLongPressed,
       scale: 0.93,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'speech_service.dart';
+
 /// Persists user preferences (theme, sound, widget) to SharedPreferences.
 class SettingsService {
   SettingsService(this._prefs);
@@ -11,6 +13,8 @@ class SettingsService {
   static const _vibrationModeKey = 'vibration_mode';
   static const _notificationSoundKey = 'notification_sound';
   static const _notificationSoundEnabledKey = 'notification_sound_enabled';
+  static const _dictationLocaleKey = 'dictation_locale';
+  static const _dictationEngineKey = 'dictation_engine';
 
   final SharedPreferences _prefs;
 
@@ -65,5 +69,24 @@ class SettingsService {
 
   Future<void> setNotificationSound(String sound) async {
     await _prefs.setString(_notificationSoundKey, sound);
+  }
+
+  /// Speech recognition language for dictation, e.g. `bn-IN`.
+  String getDictationLocale() {
+    final value = _prefs.getString(_dictationLocaleKey);
+    return dictationLocales.containsKey(value) ? value! : defaultDictationLocale;
+  }
+
+  Future<void> setDictationLocale(String localeId) async {
+    await _prefs.setString(_dictationLocaleKey, localeId);
+  }
+
+  /// `phone` (Android's recognizer) or `gemini`. Anything else, such as the
+  /// retired `whisper`, falls back to the phone.
+  String getDictationEngine() =>
+      _prefs.getString(_dictationEngineKey) == 'gemini' ? 'gemini' : 'phone';
+
+  Future<void> setDictationEngine(String engine) async {
+    await _prefs.setString(_dictationEngineKey, engine);
   }
 }

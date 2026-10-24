@@ -12,6 +12,10 @@ import 'services/notification_service.dart';
 import 'services/reels_service.dart';
 import 'services/settings_service.dart';
 import 'services/sound_service.dart';
+import 'services/gemini_speech_engine.dart';
+import 'services/gemini_transcriber.dart';
+import 'services/secret_store.dart';
+import 'services/speech_service.dart';
 import 'services/widget_service.dart';
 
 import 'services/backup_service.dart';
@@ -162,6 +166,80 @@ class NotificationSoundNotifier extends StateNotifier<String> {
 final notificationSoundProvider =
     StateNotifierProvider<NotificationSoundNotifier, String>((ref) {
   return NotificationSoundNotifier(ref.watch(settingsServiceProvider));
+});
+
+final secretStoreProvider = Provider<SecretStore>((ref) => SecretStore());
+
+/// The user's Gemini API key, null until they paste one in Settings.
+/// Loaded from secure storage in the background, which is done long before
+/// the first mic tap.
+class GeminiApiKeyNotifier extends StateNotifier<String?> {
+  GeminiApiKeyNotifier(this._secrets) : super(null) {
+    _secrets.geminiApiKey().then((key) {
+      if (mounted) state = key;
+    }).catchError((Object _) {});
+  }
+  final SecretStore _secrets;
+
+  Future<void> save(String key) async {
+    await _secrets.setGeminiApiKey(key);
+    state = key;
+  }
+
+  Future<void> remove() async {
+    await _secrets.deleteGeminiApiKey();
+    state = null;
+  }
+}
+
+final geminiApiKeyProvider =
+    StateNotifierProvider<GeminiApiKeyNotifier, String?>((ref) {
+  return GeminiApiKeyNotifier(ref.watch(secretStoreProvider));
+});
+
+class DictationEngineNotifier extends StateNotifier<String> {
+  DictationEngineNotifier(this._settings)
+      : super(_settings.getDictationEngine());
+  final SettingsService _settings;
+
+  Future<void> setEngine(String engine) async {
+    state = engine;
+    await _settings.setDictationEngine(engine);
+  }
+}
+
+/// `phone` or `gemini`, as picked in Settings → AI & voice.
+final dictationEngineProvider =
+    StateNotifierProvider<DictationEngineNotifier, String>((ref) {
+  return DictationEngineNotifier(ref.watch(settingsServiceProvider));
+});
+
+/// Shared by every dictation surface; overridden with a fake in tests.
+/// Gemini needs a saved key; without one the phone's recognizer is used.
+final speechEngineProvider = Provider<SpeechEngine>((ref) {
+  final key = ref.watch(geminiApiKeyProvider);
+  if (ref.watch(dictationEngineProvider) == 'gemini' && key != null) {
+    final transcriber = GeminiTranscriber(apiKey: key);
+    ref.onDispose(transcriber.close);
+    return GeminiSpeechEngine(transcriber);
+  }
+  return NativeSpeechEngine();
+});
+
+class DictationLocaleNotifier extends StateNotifier<String> {
+  DictationLocaleNotifier(this._settings)
+      : super(_settings.getDictationLocale());
+  final SettingsService _settings;
+
+  Future<void> setLocale(String localeId) async {
+    state = localeId;
+    await _settings.setDictationLocale(localeId);
+  }
+}
+
+final dictationLocaleProvider =
+    StateNotifierProvider<DictationLocaleNotifier, String>((ref) {
+  return DictationLocaleNotifier(ref.watch(settingsServiceProvider));
 });
 
 class HabitsNotifier extends StateNotifier<List<Habit>> {

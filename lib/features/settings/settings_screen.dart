@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import '../reels/reels_screen.dart';
+import 'ai_settings_screen.dart';
 import 'manage_habits_screen.dart';
 import 'notification_settings_screen.dart';
 
@@ -129,6 +130,21 @@ class SettingsScreen extends ConsumerWidget {
                 MaterialPageRoute(
                   builder: (_) => const NotificationSettingsScreen(),
                 ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppTokens.space5),
+
+          const SectionHeader(title: 'AI & voice'),
+          GlassCard(
+            padding: EdgeInsets.zero,
+            child: _SettingsRow(
+              icon: Icons.graphic_eq_rounded,
+              color: p.accent,
+              title: 'AI & voice',
+              subtitle: 'Dictation engine and your Gemini API key',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AiSettingsScreen()),
               ),
             ),
           ),

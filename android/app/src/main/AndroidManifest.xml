@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Voice dictation (asked for the first time the mic is tapped) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Online speech recognition and AI features; release builds don't
+         inherit this from the debug manifest. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="Habit Loop"
@@ -87,6 +92,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Voice dictation: lets SpeechChannel.kt find the system recognizer. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
         <!-- Reels counter: lets the app see which supported apps are installed
              (keep in sync with lib/features/reels/reels_apps.dart). -->

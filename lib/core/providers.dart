@@ -12,8 +12,6 @@ import 'services/notification_service.dart';
 import 'services/reels_service.dart';
 import 'services/settings_service.dart';
 import 'services/sound_service.dart';
-import 'services/gemini_speech_engine.dart';
-import 'services/gemini_transcriber.dart';
 import 'services/secret_store.dart';
 import 'services/speech_service.dart';
 import 'services/widget_service.dart';
@@ -197,34 +195,9 @@ final geminiApiKeyProvider =
   return GeminiApiKeyNotifier(ref.watch(secretStoreProvider));
 });
 
-class DictationEngineNotifier extends StateNotifier<String> {
-  DictationEngineNotifier(this._settings)
-      : super(_settings.getDictationEngine());
-  final SettingsService _settings;
-
-  Future<void> setEngine(String engine) async {
-    state = engine;
-    await _settings.setDictationEngine(engine);
-  }
-}
-
-/// `phone` or `gemini`, as picked in Settings → AI & voice.
-final dictationEngineProvider =
-    StateNotifierProvider<DictationEngineNotifier, String>((ref) {
-  return DictationEngineNotifier(ref.watch(settingsServiceProvider));
-});
-
 /// Shared by every dictation surface; overridden with a fake in tests.
-/// Gemini needs a saved key; without one the phone's recognizer is used.
-final speechEngineProvider = Provider<SpeechEngine>((ref) {
-  final key = ref.watch(geminiApiKeyProvider);
-  if (ref.watch(dictationEngineProvider) == 'gemini' && key != null) {
-    final transcriber = GeminiTranscriber(apiKey: key);
-    ref.onDispose(transcriber.close);
-    return GeminiSpeechEngine(transcriber);
-  }
-  return NativeSpeechEngine();
-});
+final speechEngineProvider =
+    Provider<SpeechEngine>((ref) => NativeSpeechEngine());
 
 class DictationLocaleNotifier extends StateNotifier<String> {
   DictationLocaleNotifier(this._settings)

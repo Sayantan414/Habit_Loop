@@ -142,7 +142,7 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.graphic_eq_rounded,
               color: p.accent,
               title: 'AI & voice',
-              subtitle: 'Dictation engine and your Gemini API key',
+              subtitle: 'Your Gemini API key for the assistant',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AiSettingsScreen()),
               ),

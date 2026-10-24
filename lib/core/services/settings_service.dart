@@ -14,7 +14,6 @@ class SettingsService {
   static const _notificationSoundKey = 'notification_sound';
   static const _notificationSoundEnabledKey = 'notification_sound_enabled';
   static const _dictationLocaleKey = 'dictation_locale';
-  static const _dictationEngineKey = 'dictation_engine';
 
   final SharedPreferences _prefs;
 
@@ -79,14 +78,5 @@ class SettingsService {
 
   Future<void> setDictationLocale(String localeId) async {
     await _prefs.setString(_dictationLocaleKey, localeId);
-  }
-
-  /// `phone` (Android's recognizer) or `gemini`. Anything else, such as the
-  /// retired `whisper`, falls back to the phone.
-  String getDictationEngine() =>
-      _prefs.getString(_dictationEngineKey) == 'gemini' ? 'gemini' : 'phone';
-
-  Future<void> setDictationEngine(String engine) async {
-    await _prefs.setString(_dictationEngineKey, engine);
   }
 }

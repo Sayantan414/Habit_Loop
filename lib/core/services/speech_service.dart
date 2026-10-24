@@ -36,7 +36,7 @@ class SpeechSetup {
 }
 
 /// One recognition backend: [NativeSpeechEngine] (the phone's recognizer)
-/// or GeminiSpeechEngine in the app, a fake in tests.
+/// in the app, a fake in tests.
 ///
 /// A "session" is one listen call. Online recognizers end it after every
 /// short pause, which [DictationController] papers over.
@@ -64,12 +64,6 @@ abstract class SpeechEngine {
   /// Ends the session and drops anything not yet delivered.
   Future<void> cancel() => stop();
 
-  /// Whether a recording whose transcription failed can be tried again.
-  bool get canRetry => false;
-
-  /// Transcribes the failed recording again; null if it fails again.
-  Future<String?> retryFailed() async => null;
-
   /// Starts the system download of [localeId]'s offline speech model.
   Future<bool> downloadLanguage(String localeId);
 
@@ -80,8 +74,8 @@ abstract class SpeechEngine {
   Future<String> describe();
 }
 
-/// The `habitloop/speech` channel (SpeechChannel.kt). Both engines talk to
-/// it; whichever is running the current take receives its callbacks.
+/// The `habitloop/speech` channel (SpeechChannel.kt). Whichever engine is
+/// running the current take receives its callbacks.
 class SpeechBridge {
   SpeechBridge._() {
     channel.setMethodCallHandler((call) async => _handler?.call(call));
@@ -240,10 +234,6 @@ class DictationController extends ChangeNotifier {
     'error_audio_error',
     'error_language_not_supported',
     'error_language_unavailable',
-    'gemini_auth',
-    'gemini_quota',
-    'gemini_network',
-    'gemini_server',
   };
 
   /// Languages already offered for download this run, so it's asked once.
@@ -263,17 +253,11 @@ class DictationController extends ChangeNotifier {
   /// Called with a user-facing message when dictation can't continue.
   void Function(String message)? onProblem;
 
-  /// Called with the text of a failed recording that came through on retry.
-  void Function(String text)? onRecovered;
-
   /// Called once per language when its offline model could be downloaded
   /// for continuous, offline dictation.
   void Function(String localeId)? onOfferDownload;
 
   bool get isListening => _wanted;
-
-  /// Stopped listening, waiting for the text (Gemini).
-  bool get isFinishing => _stopping;
 
   /// What this take has heard. Each [start] begins a new, empty take.
   String get text => _transcript.text;
@@ -314,7 +298,7 @@ class DictationController extends ChangeNotifier {
     _stopping = true;
     _restartTimer?.cancel();
     notifyListeners();
-    // Words still on their way (the whole take, with Gemini) arrive here.
+    // Words still on their way arrive here.
     await _engine.stop();
     _stopping = false;
     _wanted = false;
@@ -331,19 +315,6 @@ class DictationController extends ChangeNotifier {
   }
 
   Future<String> describe() => _engine.describe();
-
-  /// A recording whose transcription failed is waiting to be retried.
-  bool get canRetry => _engine.canRetry;
-
-  /// Tries the failed recording again; the text goes to [onRecovered].
-  Future<void> retryFailed() async {
-    final text = await _engine.retryFailed();
-    if (text == null) {
-      if (_engine.canRetry) onProblem?.call('Still not working. Try again later.');
-      return;
-    }
-    if (text.isNotEmpty) onRecovered?.call(text);
-  }
 
   Future<bool> _prepare() async {
     final setup = await _engine.prepare(_localeId);
@@ -474,16 +445,6 @@ class DictationController extends ChangeNotifier {
             'Make sure the Google app is installed and up to date.';
       case 'error_audio_error':
         return "Couldn't use the microphone. Is another app recording?";
-      case 'gemini_auth':
-        return 'Google rejected the Gemini key. Check it in Settings → '
-            'AI & voice.';
-      case 'gemini_quota':
-        return "Gemini's free limit is used up for now. Try again later, or "
-            "switch dictation to the phone's recognizer.";
-      case 'gemini_network':
-        return "Couldn't reach Gemini. Check your internet connection.";
-      case 'gemini_server':
-        return 'Gemini had a problem transcribing.';
       case 'error_network':
       case 'error_network_timeout':
       case 'error_server':

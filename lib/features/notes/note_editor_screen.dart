@@ -56,7 +56,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     _dictation = DictationController(ref.read(speechEngineProvider))
       ..addListener(_onDictation)
       ..onProblem = _showDictationProblem
-      ..onRecovered = _insertRecovered
       ..onOfferDownload = _offerSpeechDownload;
     if (widget.startDictation) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _toggleDictation());
@@ -110,26 +109,11 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       );
   }
 
-  /// A failed Gemini recording can be retried from the message itself.
   void _showDictationProblem(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: Duration(seconds: _dictation.canRetry ? 10 : 4),
-          action: _dictation.canRetry
-              ? SnackBarAction(label: 'Retry', onPressed: _dictation.retryFailed)
-              : null,
-        ),
-      );
-  }
-
-  /// Text from a retried recording goes in at the cursor.
-  void _insertRecovered(String text) {
-    if (!mounted) return;
-    _contentController.value = insertDictation(_contentController.value, text);
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showSpeechDetails() async {
@@ -393,10 +377,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                           ),
                         ),
                         const SizedBox(width: 7),
-                        Text(
-                            _dictation.isFinishing
-                                ? 'Transcribing…'
-                                : 'Listening…',
+                        Text('Listening…',
                             style: theme.textTheme.labelMedium
                                 ?.copyWith(color: p.danger)),
                       ] else if (_isSaving) ...[

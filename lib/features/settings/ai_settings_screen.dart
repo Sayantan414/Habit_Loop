@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
-import '../../core/services/gemini_transcriber.dart';
+import '../../core/services/gemini_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 
-/// SUB-SCREEN — AI & voice: which recognizer dictation uses, and the user's
-/// own Gemini API key.
+/// SUB-SCREEN — AI & voice: the user's own Gemini API key, which the
+/// assistant needs.
 ///
 /// Everything here is opt-in. Without a key nothing reaches the network
 /// beyond what the phone's own recognizer does.
@@ -48,24 +48,24 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
     if (key.isEmpty) return;
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _checking = true);
-    final transcriber = GeminiTranscriber(apiKey: key);
+    final gemini = GeminiClient(apiKey: key);
     String message;
     try {
-      final valid = await transcriber.checkKey();
+      final valid = await gemini.checkKey();
       if (!valid) {
         message = "Google didn't accept this key. Copy it again from "
             'aistudio.google.com/apikey.';
       } else {
         await ref.read(geminiApiKeyProvider.notifier).save(key);
         _keyController.clear();
-        message = 'Key saved. Gemini dictation is ready.';
+        message = 'Key saved. The assistant is ready.';
       }
-    } on TranscriptionException {
+    } on GeminiException {
       await ref.read(geminiApiKeyProvider.notifier).save(key);
       _keyController.clear();
       message = "Key saved, but it couldn't be checked (no internet?).";
     } finally {
-      transcriber.close();
+      gemini.close();
     }
     if (!mounted) return;
     setState(() => _checking = false);
@@ -78,8 +78,8 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Remove Gemini key?'),
         content: const Text(
-          "Dictation goes back to the phone's recognizer. You can paste the "
-          'key again any time.',
+          "The assistant won't work without it. You can paste the key again "
+          'any time.',
         ),
         actions: [
           TextButton(
@@ -98,23 +98,12 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
     );
     if (confirm != true) return;
     await ref.read(geminiApiKeyProvider.notifier).remove();
-    await ref.read(dictationEngineProvider.notifier).setEngine('phone');
-  }
-
-  void _selectEngine(String engine) {
-    HapticFeedback.selectionClick();
-    if (engine == 'gemini' && ref.read(geminiApiKeyProvider) == null) {
-      _showMessage('Add your Gemini API key below first.');
-      return;
-    }
-    ref.read(dictationEngineProvider.notifier).setEngine(engine);
   }
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
-    final engine = ref.watch(dictationEngineProvider);
     final savedKey = ref.watch(geminiApiKeyProvider);
 
     return Scaffold(
@@ -128,49 +117,6 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppTokens.gutter),
           children: [
-            const SectionHeader(title: 'Dictation'),
-            GlassCard(
-              padding: const EdgeInsets.all(AppTokens.space4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<String>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(
-                          value: 'phone',
-                          icon: Icon(Icons.phone_android_rounded, size: 17),
-                          label: Text('Phone'),
-                        ),
-                        ButtonSegment(
-                          value: 'gemini',
-                          icon: Icon(Icons.auto_awesome_rounded, size: 17),
-                          label: Text('Gemini'),
-                        ),
-                      ],
-                      selected: {engine},
-                      onSelectionChanged: (s) => _selectEngine(s.first),
-                    ),
-                  ),
-                  const SizedBox(height: AppTokens.space3),
-                  Text(
-                    engine == 'gemini'
-                        ? 'Like a voice message: records the whole take, '
-                            'then writes it all down when you stop. Best for '
-                            'Bengali, mixed speech and long notes. Needs '
-                            'internet.'
-                        : "Android's built-in recognizer. Text appears as "
-                            'you speak and it needs no key, but it may stop '
-                            'and beep on pauses.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppTokens.space5),
-
             const SectionHeader(title: 'Gemini API key'),
             GlassCard(
               padding: const EdgeInsets.all(AppTokens.space4),
@@ -260,12 +206,12 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
                   const SizedBox(width: AppTokens.space3),
                   Expanded(
                     child: Text(
-                      'With Gemini, each recording is sent to Google to be '
-                      'turned into text, then deleted from Google straight '
-                      'away. Nothing else from the app is sent. On the free '
-                      'tier Google may use what you send to improve its '
-                      'products, and people may review it, so use Phone '
-                      'dictation for anything private.',
+                      "Dictation uses the phone's own recognizer. The "
+                      'assistant sends Google only what a request needs: '
+                      'what you typed or said, your habit and to-do titles '
+                      'and note titles, never note contents unless you '
+                      'agree. On the free tier Google may use what you send '
+                      'to improve its products, and people may review it.',
                       style: theme.textTheme.bodySmall,
                     ),
                   ),

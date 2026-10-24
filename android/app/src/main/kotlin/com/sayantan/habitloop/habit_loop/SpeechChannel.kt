@@ -36,9 +36,6 @@ import java.util.Locale
  * The phone's default is often an on-device-only service without Bengali,
  * which is why going through it reported the language as not installed.
  *
- * Gemini dictation doesn't use a recognizer at all: [MemoRecorder] records
- * the whole take to a file, which Flutter sends to Gemini once it stops.
- *
  * Google's recognizer beeps every time it starts, which in restart mode
  * means after every pause. While a take is running ([setQuiet]) the media
  * stream is muted, which silences the beep on most phones, and restored
@@ -93,7 +90,6 @@ class SpeechChannel(private val activity: Activity, messenger: BinaryMessenger) 
     private val onDeviceFailed = HashSet<String>()
 
     private val audio = app.getSystemService(AudioManager::class.java)
-    private val memo = MemoRecorder(app) { channel.invokeMethod("onMemoLimit", null) }
     private val unmute = Runnable { restoreSound() }
 
     /** What the last [prepare] found, for the in-app diagnostics line. */
@@ -123,22 +119,6 @@ class SpeechChannel(private val activity: Activity, messenger: BinaryMessenger) 
                     downloadLanguage(call.argument<String>("locale") ?: "en-IN")
                 )
 
-                "ensureMicPermission" -> withMicPermission { result.success(it) }
-
-                "startMemo" -> withMicPermission { granted ->
-                    result.success(
-                        when {
-                            !granted -> "error_permission"
-                            memo.start() -> "ok"
-                            else -> "error_audio_error"
-                        }
-                    )
-                }
-
-                "stopMemo" -> result.success(
-                    memo.stop(keep = call.argument<Boolean>("keep") ?: true)
-                )
-
                 "setQuiet" -> {
                     setQuiet(call.argument<Boolean>("quiet") ?: false)
                     result.success(null)
@@ -159,7 +139,6 @@ class SpeechChannel(private val activity: Activity, messenger: BinaryMessenger) 
     }
 
     fun dispose() {
-        memo.discard()
         handler.removeCallbacks(unmute)
         restoreSound()
         listener = null

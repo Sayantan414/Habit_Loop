@@ -10,7 +10,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
-        ReelsChannel.register(this, messenger)
+        UsageChannel.register(this, messenger)
         speech = SpeechChannel(this, messenger)
     }
 

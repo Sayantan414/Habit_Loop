@@ -100,23 +100,23 @@ class HabitCard extends StatelessWidget {
 /// logged, so the only control is a quiet "Slipped" button (confirmed before
 /// it counts). Once slipped, the same button undoes it.
 ///
-/// A reels habit has no button: it shows today's reels against its target,
-/// and slips are logged by the reels counter.
+/// A screen-time habit has no button: it shows today's minutes against its
+/// limit, and slips are logged from usage stats.
 class AvoidHabitCard extends StatelessWidget {
   const AvoidHabitCard({
     super.key,
     required this.habit,
     required this.onTap,
     required this.onSlip,
-    this.reelsToday,
+    this.screenMinutesToday,
   });
 
   final Habit habit;
   final VoidCallback onTap;
   final VoidCallback onSlip;
 
-  /// Today's reels across tracked apps, for a reels habit.
-  final int? reelsToday;
+  /// Today's minutes on the habit's apps, for a screen-time habit.
+  final int? screenMinutesToday;
 
   @override
   Widget build(BuildContext context) {
@@ -126,14 +126,14 @@ class AvoidHabitCard extends StatelessWidget {
     final slipped = habit.isSlippedToday;
     final streak = habit.currentStreak;
     final dayNumber = habit.todayDayNumber.clamp(1, habit.effectiveTotalDays);
-    final target = habit.reelsTarget;
-    final reels = reelsToday ?? 0;
+    final limit = habit.screenTimeLimit;
+    final minutes = screenMinutesToday ?? 0;
 
     final String status;
-    if (habit.isReelsHabit) {
+    if (habit.isScreenTimeHabit) {
       status = slipped
-          ? 'Over $target reels today — tomorrow is a fresh start.'
-          : '$reels of $target reels today';
+          ? 'Over $limit min today — tomorrow is a fresh start.'
+          : '${(limit! - minutes).clamp(0, limit)} min left today';
     } else {
       status = slipped
           ? 'Slipped today — tomorrow is a fresh start.'
@@ -198,11 +198,16 @@ class AvoidHabitCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              if (habit.isReelsHabit)
+              if (habit.isScreenTimeHabit)
                 TagChip(
-                  label: '$reels / $target',
-                  icon: Icons.slow_motion_video_rounded,
-                  color: slipped ? p.danger : color,
+                  label: '$minutes / $limit min',
+                  icon: Icons.hourglass_bottom_rounded,
+                  // Amber once 80% of the day's allowance is used.
+                  color: slipped
+                      ? p.danger
+                      : minutes >= limit! * 0.8
+                      ? p.warning
+                      : color,
                 )
               else
                 OutlinedButton(

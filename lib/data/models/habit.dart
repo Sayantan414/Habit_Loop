@@ -26,10 +26,13 @@ class Habit extends HiveObject {
     List<int>? slipDays,
     this.isStrict = false,
     this.reelsTarget,
+    this.screenTimeLimit,
+    List<String>? screenTimeApps,
   }) : createdAt = createdAt ?? DateTime.now(),
        completedDays = completedDays ?? <int>[],
        reminderTimes = reminderTimes ?? <int>[],
-       slipDays = slipDays ?? <int>[];
+       slipDays = slipDays ?? <int>[],
+       screenTimeApps = screenTimeApps ?? <String>[];
 
   @HiveField(0)
   String id;
@@ -93,13 +96,25 @@ class Habit extends HiveObject {
   @HiveField(14, defaultValue: false)
   bool isStrict;
 
-  /// Bad habits only: the most reels allowed per day. When set, the habit
-  /// tracks itself from the reels counter — any day over the target is
-  /// logged as a slip automatically, and slips can't be logged by hand.
+  /// Deprecated: the daily reels target from the removed reels counter.
+  /// Cleared on startup (the habit stays as a manual Quit habit) and kept
+  /// only so Hive can still read old records. Never reuse field 15.
   @HiveField(15)
   int? reelsTarget;
 
-  bool get isReelsHabit => isBad && reelsTarget != null;
+  /// Bad habits only: the most minutes per day allowed across
+  /// [screenTimeApps]. When set, the habit tracks itself from Android's
+  /// usage stats — any day over the limit is logged as a slip automatically,
+  /// and slips can't be logged by hand.
+  @HiveField(16)
+  int? screenTimeLimit;
+
+  /// Package names whose foreground time counts towards [screenTimeLimit].
+  @HiveField(17, defaultValue: [])
+  List<String> screenTimeApps;
+
+  bool get isScreenTimeHabit =>
+      isBad && screenTimeLimit != null && screenTimeApps.isNotEmpty;
 
   /// The calendar date of [dayNumber] (day 1 = [startDate]).
   DateTime dateOfDay(int dayNumber) {
@@ -240,7 +255,8 @@ class Habit extends HiveObject {
       'isBad': isBad,
       'slipDays': slipDays,
       'isStrict': isStrict,
-      'reelsTarget': reelsTarget,
+      'screenTimeLimit': screenTimeLimit,
+      'screenTimeApps': screenTimeApps,
     };
   }
 
@@ -271,7 +287,10 @@ class Habit extends HiveObject {
           ?.map((e) => (e as num).toInt())
           .toList(),
       isStrict: json['isStrict'] as bool? ?? false,
-      reelsTarget: (json['reelsTarget'] as num?)?.toInt(),
+      screenTimeLimit: (json['screenTimeLimit'] as num?)?.toInt(),
+      screenTimeApps: (json['screenTimeApps'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
     );
   }
 }

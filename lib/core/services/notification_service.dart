@@ -11,7 +11,9 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../data/models/habit.dart';
 import '../theme/app_colors.dart';
 
-/// Schedules the daily habit reminders the user picks per habit.
+/// Schedules the daily habit reminders the user picks per Build habit.
+/// Quit habits have no reminders; screen-time habits get native
+/// "minutes left" alerts instead (ScreenTimeAlerts.kt).
 ///
 /// Reminders are scheduled as one-shot notifications for the next
 /// [_daysAhead] days rather than as open-ended repeating alarms, so that a
@@ -216,13 +218,6 @@ class NotificationService {
     }
   }
 
-  /// Asks only for permission to post notifications (Android 13+), for
-  /// alerts that aren't scheduled, like the reels-limit nudge.
-  Future<bool> requestPostPermission() async {
-    if (!_ready) return false;
-    return await _android?.requestNotificationsPermission() ?? false;
-  }
-
   /// Asks for notification permission, plus exact-alarm access so reminders
   /// fire on the minute. Returns false if notifications stay blocked.
   Future<bool> requestPermissions() async {
@@ -272,7 +267,7 @@ class NotificationService {
         : AndroidScheduleMode.inexactAllowWhileIdle;
 
     for (final habit in habits) {
-      if (habit.reminderTimes.isEmpty) continue;
+      if (habit.isBad || habit.reminderTimes.isEmpty) continue;
 
       // Checked off (or slipped) today: drop today's reminders, including
       // ones already shown.
@@ -322,7 +317,6 @@ class NotificationService {
     if (dayNumber < 1) return false;
     // Extended habits run every day until the target count is reached, so
     // only Fixed ones have a hard last day.
-    if (habit.isBad) return dayNumber <= habit.effectiveTotalDays;
     return !habit.isFixed || dayNumber <= habit.totalDays;
   }
 
@@ -331,8 +325,6 @@ class NotificationService {
     int dayNumber,
     int slot,
   ) {
-    if (habit.isBad) return _quitMessage(habit, dayNumber, slot);
-
     final summary = habit.isFixed
         ? 'Day $dayNumber of ${habit.totalDays}'
         : 'Day $dayNumber · ${habit.totalDays}-day loop';
@@ -354,34 +346,6 @@ class NotificationService {
     ];
     return (
       title: 'Time for ${habit.title}',
-      body: lines[(dayNumber + slot) % lines.length],
-      summary: summary,
-    );
-  }
-
-  /// Encouragement rather than a to-do: there is nothing to check off, and
-  /// the user only needs to open the app if they slipped.
-  ({String title, String body, String summary}) _quitMessage(
-    Habit habit,
-    int dayNumber,
-    int slot,
-  ) {
-    final summary = 'Day $dayNumber of ${habit.effectiveTotalDays}';
-    // Assumes no slips between now and [dayNumber]; re-synced on every change.
-    final clean = habit.currentStreak + (dayNumber - habit.todayDayNumber);
-
-    final lines = [
-      "Cravings pass. You've got this.",
-      'Every clean day makes the next one easier.',
-      habit.isReelsHabit
-          ? 'Stay under ${habit.reelsTarget} reels today. Habit Loop keeps count for you.'
-          : 'Only open the app if you slipped — otherwise, keep going.',
-      'One day at a time. Today counts.',
-    ];
-    return (
-      title: clean > 0
-          ? '${habit.title}: $clean ${clean == 1 ? 'day' : 'days'} clean'
-          : 'Stay strong: ${habit.title}',
       body: lines[(dayNumber + slot) % lines.length],
       summary: summary,
     );
@@ -412,15 +376,13 @@ class NotificationService {
           contentTitle: message.title,
           summaryText: message.summary,
         ),
-        actions: habit.isBad
-            ? null
-            : const [
-                AndroidNotificationAction(
-                  markDoneActionId,
-                  'Mark as done',
-                  showsUserInterface: true,
-                ),
-              ],
+        actions: const [
+          AndroidNotificationAction(
+            markDoneActionId,
+            'Mark as done',
+            showsUserInterface: true,
+          ),
+        ],
       ),
     );
   }

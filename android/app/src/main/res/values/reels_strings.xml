@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="reels_service_label">Habit Loop reels counter</string>
-    <string name="reels_service_description">Counts how many reels and short videos you swipe through in the apps you choose inside Habit Loop. It only notices scrolling in those apps, never reads messages or text, and nothing leaves your phone.</string>
-</resources>

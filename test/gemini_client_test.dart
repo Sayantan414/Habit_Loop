@@ -31,7 +31,7 @@ void main() {
         await check(() => throw http.ClientException('offline')),
         'gemini_network',
       );
-      expect(await check(() => http.Response('', 500)), 'gemini_server');
+      expect(await check(() => http.Response('', 500)), 'gemini_busy');
     });
   });
 
@@ -41,5 +41,16 @@ void main() {
     );
     expect(e.code, 'gemini_quota');
     expect(e.retryAfter, const Duration(seconds: 7));
+  });
+
+  test("an unexpected error keeps Google's message", () {
+    final e = GeminiClient.failureFor(
+      http.Response(
+        '{"error":{"code":400,"message":"Unknown name \\"x\\"."}}',
+        400,
+      ),
+    );
+    expect(e.code, 'gemini_server');
+    expect(e.detail, startsWith('400: Unknown name'));
   });
 }

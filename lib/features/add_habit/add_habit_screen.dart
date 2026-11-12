@@ -5,36 +5,25 @@ import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
 import '../../core/services/notification_service.dart';
-import '../../core/services/reels_service.dart';
+import '../../core/services/usage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/habit.dart';
 import '../../widgets/app_background.dart';
+import '../../widgets/app_icon.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/reminder_times_picker.dart';
+import 'app_picker_screen.dart';
 
 /// SCREEN 3 — Create or edit a habit.
 class AddHabitScreen extends ConsumerStatefulWidget {
-  const AddHabitScreen({super.key, this.habit, this.startAsReelsHabit = false});
+  const AddHabitScreen({super.key, this.habit});
 
   final Habit? habit;
 
-  /// Opens a new Quit habit with "Track reels automatically" already on
-  /// (used by the Reels counter screen's shortcut).
-  final bool startAsReelsHabit;
-
-  static Future<void> push(
-    BuildContext context, {
-    Habit? habit,
-    bool startAsReelsHabit = false,
-  }) {
+  static Future<void> push(BuildContext context, {Habit? habit}) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => AddHabitScreen(
-          habit: habit,
-          startAsReelsHabit: startAsReelsHabit,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => AddHabitScreen(habit: habit)),
     );
   }
 
@@ -49,7 +38,8 @@ abstract final class AddHabitSheet {
   }
 }
 
-class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
+class _AddHabitScreenState extends ConsumerState<AddHabitScreen>
+    with WidgetsBindingObserver {
   static const _buildPresets = <({int days, String label})>[
     (days: 21, label: 'Form it'),
     (days: 30, label: 'One month'),
@@ -67,14 +57,18 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
 
   final _titleController = TextEditingController();
   final _customDaysController = TextEditingController();
-  final _reelsTargetController = TextEditingController(text: '50');
+  /// Quit habits only: measure minutes on [_screenApps] automatically,
+  /// slipping on days over the limit typed into [_screenLimitController].
+  bool _trackScreenTime = false;
+  List<InstalledApp> _screenApps = [];
+  final _screenLimitController = TextEditingController(text: '45');
 
-  /// Quit habits only: count reels automatically, slipping on days over
-  /// the target typed into [_reelsTargetController].
-  bool _trackReels = false;
+  /// Whether Usage access is on; re-checked when the user comes back from
+  /// system settings.
+  bool _usageAllowed = false;
 
-  /// True while the title is the one generated from the reels target, so it
-  /// keeps following the target until the user types their own.
+  /// True while the title is the one generated from the screen-time apps
+  /// and limit, so it keeps following them until the user types their own.
   bool _autoTitle = false;
 
   int _days = 21;
@@ -91,12 +85,8 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.habit == null && widget.startAsReelsHabit) {
-      _isBad = true;
-      _days = _quitPresets.last.days;
-      _setTrackReels(true);
-    }
-
+    WidgetsBinding.instance.addObserver(this);
+    _checkUsageAccess();
     _titleController.addListener(() => setState(() {}));
 
     if (widget.habit != null) {
@@ -105,9 +95,15 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       _isFixed = h.isFixed;
       _isBad = h.isBad;
       _isStrict = h.isStrict;
-      if (h.isReelsHabit) {
-        _trackReels = true;
-        _reelsTargetController.text = '${h.reelsTarget}';
+      if (h.isScreenTimeHabit) {
+        _trackScreenTime = true;
+        _screenLimitController.text = '${h.screenTimeLimit}';
+        // Package names stand in until the real app names load.
+        _screenApps = [
+          for (final pkg in h.screenTimeApps)
+            InstalledApp(packageName: pkg, label: pkg),
+        ];
+        _loadScreenAppLabels(h.screenTimeApps);
       }
       _startDate = h.startDate;
       _reminderTimes = List<int>.from(h.reminderTimes);
@@ -135,26 +131,74 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _titleController.dispose();
     _customDaysController.dispose();
-    _reelsTargetController.dispose();
+    _screenLimitController.dispose();
     super.dispose();
   }
 
-  int? get _reelsTarget {
-    final parsed = int.tryParse(_reelsTargetController.text.trim());
-    if (parsed == null || parsed < 1 || parsed > 999) return null;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkUsageAccess();
+  }
+
+  Future<void> _checkUsageAccess() async {
+    final allowed = await UsageService.hasPermission().catchError(
+      (Object _) => false,
+    );
+    if (mounted && allowed != _usageAllowed) {
+      setState(() => _usageAllowed = allowed);
+    }
+  }
+
+  Future<void> _loadScreenAppLabels(List<String> packages) async {
+    final List<InstalledApp> installed;
+    try {
+      installed = await UsageService.installedApps();
+    } on PlatformException {
+      return;
+    }
+    final labels = {for (final a in installed) a.packageName: a.label};
+    if (!mounted) return;
+    setState(() {
+      _screenApps = [
+        for (final pkg in packages)
+          InstalledApp(packageName: pkg, label: labels[pkg] ?? pkg),
+      ];
+    });
+  }
+
+  int? get _screenLimit {
+    final parsed = int.tryParse(_screenLimitController.text.trim());
+    if (parsed == null || parsed < 1 || parsed > 1440) return null;
     return parsed;
   }
 
-  String _reelsTitle(int target) => 'Max $target reels a day';
+  String _screenTitle(int limit) {
+    final names = _screenApps.map((a) => a.label).toList();
+    final apps = switch (names.length) {
+      0 => 'Screen time',
+      1 => names[0],
+      2 => '${names[0]} + ${names[1]}',
+      _ => '${names[0]} + ${names.length - 1} more',
+    };
+    return '$apps under $limit min';
+  }
 
-  void _setTrackReels(bool on) {
-    _trackReels = on;
+  /// Rewrites a generated title after the apps or limit change.
+  void _followScreenTitle() {
+    final limit = _screenLimit;
+    if (_autoTitle && limit != null) {
+      _titleController.text = _screenTitle(limit);
+    }
+  }
+
+  void _setTrackScreenTime(bool on) {
+    _trackScreenTime = on;
     _error = null;
-    final title = _titleController.text.trim();
-    if (on && title.isEmpty) {
-      _titleController.text = _reelsTitle(_reelsTarget ?? 50);
+    if (on && _titleController.text.trim().isEmpty) {
+      _titleController.text = _screenTitle(_screenLimit ?? 45);
       _autoTitle = true;
     } else if (!on && _autoTitle) {
       _titleController.clear();
@@ -162,13 +206,31 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
     }
   }
 
-  void _onReelsTargetChanged(String _) {
+  void _setScreenLimit(int minutes) {
     setState(() {
       _error = null;
-      final target = _reelsTarget;
-      if (_autoTitle && target != null) {
-        _titleController.text = _reelsTitle(target);
-      }
+      _screenLimitController.text = '$minutes';
+      _followScreenTitle();
+    });
+  }
+
+  void _onScreenLimitChanged(String _) {
+    setState(() {
+      _error = null;
+      _followScreenTitle();
+    });
+  }
+
+  Future<void> _pickScreenApps() async {
+    final picked = await AppPickerScreen.push(
+      context,
+      selected: {for (final a in _screenApps) a.packageName},
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _error = null;
+      _screenApps = picked;
+      _followScreenTitle();
     });
   }
 
@@ -191,7 +253,7 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
     setState(() {
       _isBad = isBad;
       if (!isBad) _isStrict = false;
-      if (!isBad && _trackReels) _setTrackReels(false);
+      if (!isBad && _trackScreenTime) _setTrackScreenTime(false);
       if (!_customDays) _days = _presets.first.days;
       _error = null;
     });
@@ -221,11 +283,30 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       );
       return;
     }
-    final reelsTarget = _isBad && _trackReels ? _reelsTarget : null;
-    if (_isBad && _trackReels && reelsTarget == null) {
-      setState(() => _error = 'Enter a reels target between 1 and 999.');
-      return;
+    final trackScreen = _isBad && _trackScreenTime;
+    final screenLimit = trackScreen ? _screenLimit : null;
+    if (trackScreen) {
+      if (_screenApps.isEmpty) {
+        setState(() => _error = 'Choose at least one app to limit.');
+        return;
+      }
+      if (screenLimit == null) {
+        setState(
+          () => _error = 'Enter a daily limit between 1 and 1440 minutes.',
+        );
+        return;
+      }
+      if (!_usageAllowed) {
+        setState(
+          () => _error = 'Allow usage access so Habit Loop can see your '
+              'screen time.',
+        );
+        return;
+      }
     }
+    final screenApps = trackScreen
+        ? [for (final a in _screenApps) a.packageName]
+        : <String>[];
 
     setState(() {
       _error = null;
@@ -241,11 +322,13 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
       h.colorValue = _swatch.id;
       h.isFixed = _isFixed;
       h.isStrict = _isBad && _isStrict;
-      h.reelsTarget = reelsTarget;
-      h.reminderTimes = _reminderTimes.toList()..sort();
+      h.screenTimeLimit = screenLimit;
+      h.screenTimeApps = screenApps;
+      // Quit habits have no reminders.
+      h.reminderTimes = _isBad ? [] : (_reminderTimes.toList()..sort());
 
       await ref.read(habitsProvider.notifier).updateHabit(h);
-      if (_reminderTimes.isNotEmpty) {
+      if (!_isBad && _reminderTimes.isNotEmpty || trackScreen) {
         await NotificationService.instance.requestPermissions();
         await NotificationService.instance.syncAll(ref.read(habitsProvider));
       } else {
@@ -260,12 +343,14 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
             startDate: _startDate,
             colorValue: _swatch.id,
             isFixed: _isFixed,
-            reminderTimes: _reminderTimes,
+            reminderTimes: _isBad ? const [] : _reminderTimes,
             isBad: _isBad,
             isStrict: _isStrict,
-            reelsTarget: reelsTarget,
+            screenTimeLimit: screenLimit,
+            screenTimeApps: screenApps,
           );
-      if (_reminderTimes.isNotEmpty) {
+      // Screen-time habits need notifications for their "min left" alerts.
+      if (!_isBad && _reminderTimes.isNotEmpty || trackScreen) {
         await NotificationService.instance.requestPermissions();
       }
     }
@@ -336,18 +421,25 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                     ],
 
                     if (_isBad &&
-                        ReelsService.isSupported &&
-                        (widget.habit == null || _trackReels)) ...[
+                        UsageService.isSupported &&
+                        (widget.habit == null || _trackScreenTime)) ...[
                       _FieldLabel('Track automatically'),
-                      _ReelsTrackingCard(
+                      _ScreenTimeTrackingCard(
                         color: color,
-                        enabled: _trackReels,
+                        enabled: _trackScreenTime,
                         // An existing habit can't switch its slips between
-                        // manual and automatic; only the target can change.
+                        // manual and automatic; only the apps and limit can
+                        // change.
                         canToggle: widget.habit == null,
-                        targetController: _reelsTargetController,
-                        onToggle: (on) => setState(() => _setTrackReels(on)),
-                        onTargetChanged: _onReelsTargetChanged,
+                        usageAllowed: _usageAllowed,
+                        apps: _screenApps,
+                        limitController: _screenLimitController,
+                        onToggle: (on) =>
+                            setState(() => _setTrackScreenTime(on)),
+                        onAllowUsage: UsageService.openSettings,
+                        onPickApps: _pickScreenApps,
+                        onLimitPreset: _setScreenLimit,
+                        onLimitChanged: _onScreenLimitChanged,
                       ),
                       const SizedBox(height: AppTokens.space5),
                     ],
@@ -523,10 +615,9 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
                     ),
                     const SizedBox(height: AppTokens.space5),
 
-                    if (NotificationService.instance.isSupported) ...[
-                      _FieldLabel(
-                        _isBad ? 'Daily encouragement' : 'Daily reminders',
-                      ),
+                    if (!_isBad &&
+                        NotificationService.instance.isSupported) ...[
+                      _FieldLabel('Daily reminders'),
                       ReminderTimesPicker(
                         times: _reminderTimes,
                         color: color,
@@ -627,29 +718,43 @@ class _AddHabitScreenState extends ConsumerState<AddHabitScreen> {
   }
 }
 
-/// "Count reels for me" option on a Quit habit: a switch plus the daily
-/// reels target. Days over the target become slips automatically.
-class _ReelsTrackingCard extends StatelessWidget {
-  const _ReelsTrackingCard({
+/// "Limit my screen time" option on a Quit habit: a switch, the apps to
+/// measure and the daily minutes. Days over the limit become slips
+/// automatically.
+class _ScreenTimeTrackingCard extends StatelessWidget {
+  const _ScreenTimeTrackingCard({
     required this.color,
     required this.enabled,
     required this.canToggle,
-    required this.targetController,
+    required this.usageAllowed,
+    required this.apps,
+    required this.limitController,
     required this.onToggle,
-    required this.onTargetChanged,
+    required this.onAllowUsage,
+    required this.onPickApps,
+    required this.onLimitPreset,
+    required this.onLimitChanged,
   });
+
+  static const _presets = [15, 30, 45, 60];
 
   final Color color;
   final bool enabled;
   final bool canToggle;
-  final TextEditingController targetController;
+  final bool usageAllowed;
+  final List<InstalledApp> apps;
+  final TextEditingController limitController;
   final ValueChanged<bool> onToggle;
-  final ValueChanged<String> onTargetChanged;
+  final VoidCallback onAllowUsage;
+  final VoidCallback onPickApps;
+  final ValueChanged<int> onLimitPreset;
+  final ValueChanged<String> onLimitChanged;
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
+    final limit = int.tryParse(limitController.text.trim());
 
     return GlassCard(
       accent: color,
@@ -660,15 +765,15 @@ class _ReelsTrackingCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.slow_motion_video_rounded, color: color),
+              Icon(Icons.hourglass_bottom_rounded, color: color),
               const SizedBox(width: AppTokens.space3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Reels', style: theme.textTheme.titleSmall),
+                    Text('Screen time', style: theme.textTheme.titleSmall),
                     Text(
-                      'Uses the reels counter — no need to log slips',
+                      'Uses your phone’s usage stats — no need to log slips',
                       style: theme.textTheme.bodySmall,
                     ),
                   ],
@@ -678,27 +783,96 @@ class _ReelsTrackingCard extends StatelessWidget {
             ],
           ),
           if (enabled) ...[
+            if (!usageAllowed) ...[
+              const SizedBox(height: AppTokens.space4),
+              Container(
+                padding: const EdgeInsets.all(AppTokens.space3),
+                decoration: BoxDecoration(
+                  color: p.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+                  border: Border.all(color: p.warning.withValues(alpha: 0.35)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Turn on Usage access for Habit Loop so it can see how '
+                      'long you spend in each app. It can’t see what’s on '
+                      'your screen.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: p.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppTokens.space2),
+                    OutlinedButton.icon(
+                      onPressed: onAllowUsage,
+                      icon: const Icon(Icons.lock_open_rounded, size: 18),
+                      label: const Text('Allow usage access'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: AppTokens.space4),
+            Text('Apps', style: theme.textTheme.titleSmall),
+            const SizedBox(height: AppTokens.space2),
+            Wrap(
+              spacing: AppTokens.space2,
+              runSpacing: AppTokens.space2,
+              children: [
+                for (final app in apps)
+                  Chip(
+                    avatar: AppIcon(packageName: app.packageName, size: 20),
+                    label: Text(app.label),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ActionChip(
+                  avatar: Icon(
+                    apps.isEmpty ? Icons.add_rounded : Icons.edit_rounded,
+                    size: 18,
+                  ),
+                  label: Text(apps.isEmpty ? 'Choose apps' : 'Change'),
+                  onPressed: onPickApps,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTokens.space4),
+            Text('Daily limit', style: theme.textTheme.titleSmall),
+            const SizedBox(height: AppTokens.space2),
+            Wrap(
+              spacing: AppTokens.space2,
+              children: [
+                for (final minutes in _presets)
+                  ChoiceChip(
+                    label: Text('$minutes min'),
+                    selected: limit == minutes,
+                    onSelected: (_) => onLimitPreset(minutes),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppTokens.space3),
             TextField(
-              controller: targetController,
+              controller: limitController,
               keyboardType: TextInputType.number,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(3),
+                LengthLimitingTextInputFormatter(4),
               ],
-              onChanged: onTargetChanged,
+              onChanged: onLimitChanged,
               onTapOutside: (_) =>
                   FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
-                labelText: 'Max reels per day',
-                suffixText: 'reels',
+                labelText: 'Max minutes per day',
+                suffixText: 'min',
                 prefixIcon: Icon(Icons.flag_rounded, size: 19),
               ),
             ),
             const SizedBox(height: AppTokens.space2),
             Text(
-              'Any day you go over this is logged as a slip, counted across '
-              'the apps tracked in Settings → Reels counter.',
+              'Any day you spend longer than this across these apps is '
+              'logged as a slip.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: p.textSecondary,
               ),

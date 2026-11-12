@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/todo.dart';
+import '../../widgets/assistant_button.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/todo_item_tile.dart';
@@ -122,7 +123,14 @@ class _TodoTabState extends ConsumerState<TodoTab> {
           AppTokens.navClearance,
         ),
         children: [
-          Text('To-Do', style: theme.textTheme.headlineLarge),
+          Row(
+            children: [
+              Expanded(
+                child: Text('To-Do', style: theme.textTheme.headlineLarge),
+              ),
+              const AssistantButton(),
+            ],
+          ),
           const SizedBox(height: 2),
           Text(
             active.isEmpty

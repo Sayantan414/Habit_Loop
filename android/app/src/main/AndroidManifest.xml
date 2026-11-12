@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Habit reminders -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -9,6 +10,11 @@
     <!-- Online speech recognition and AI features; release builds don't
          inherit this from the debug manifest. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Screen-time habits: per-app foreground time from UsageStatsManager.
+         Granted by the user in Settings > Usage access, never at runtime. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:label="Habit Loop"
@@ -52,6 +58,17 @@
                 android:resource="@xml/habit_today_widget_info" />
         </receiver>
 
+        <!-- Screen-time habits: "minutes left" alerts. Its alarm is explicit;
+             the filters restart the alarm chain after a reboot or update. -->
+        <receiver
+            android:name=".ScreenTimeAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- flutter_local_notifications: fire scheduled reminders and restore
              them after a reboot / app update. -->
         <receiver
@@ -67,21 +84,6 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
-
-        <!-- Reels counter: off until the user turns it on in Accessibility
-             settings, and then only listens to the apps they picked. -->
-        <service
-            android:name=".ReelsCounterService"
-            android:exported="true"
-            android:label="@string/reels_service_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/reels_accessibility_config" />
-        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -93,19 +95,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Screen-time habits: lets UsageChannel.kt list every launchable app
+             for the app picker. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <!-- Voice dictation: lets SpeechChannel.kt find the system recognizer. -->
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
-        <!-- Reels counter: lets the app see which supported apps are installed
-             (keep in sync with lib/features/reels/reels_apps.dart). -->
-        <package android:name="com.instagram.android" />
-        <package android:name="com.instagram.lite" />
-        <package android:name="com.facebook.katana" />
-        <package android:name="com.google.android.youtube" />
-        <package android:name="com.snapchat.android" />
-        <package android:name="in.mohalla.video" />
-        <package android:name="com.eterno.shortvideos" />
-        <package android:name="in.mohalla.sharechat" />
     </queries>
 </manifest>

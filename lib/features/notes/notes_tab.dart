@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/note.dart';
+import '../../widgets/assistant_button.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/pressable.dart';
 import 'note_editor_screen.dart';
@@ -83,7 +84,14 @@ class _NotesTabState extends ConsumerState<NotesTab> {
           AppTokens.navClearance,
         ),
         children: [
-          Text('Notes', style: theme.textTheme.headlineLarge),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Notes', style: theme.textTheme.headlineLarge),
+              ),
+              const AssistantButton(),
+            ],
+          ),
           const SizedBox(height: 2),
           Text(
             '${notes.length} note${notes.length == 1 ? '' : 's'}'

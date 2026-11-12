@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/screen_time.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/habit.dart';
+import '../../widgets/assistant_button.dart';
 import '../../widgets/confetti.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/habit_card.dart';
@@ -68,9 +70,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   Widget build(BuildContext context) {
     final active = ref.watch(activeHabitsProvider);
     final avoiding = ref.watch(avoidingHabitsProvider);
-    final reelsToday = avoiding.any((h) => h.isReelsHabit)
-        ? ref.watch(reelsProvider).totalOn(DateTime.now())
-        : null;
+    final screenUsage = ref.watch(screenTimeUsageProvider);
     final finished = ref.watch(finishedHabitsProvider);
     final paused = ref.watch(pausedHabitsProvider);
     final summary = ref.watch(todaySummaryProvider);
@@ -137,7 +137,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                   padding: const EdgeInsets.only(bottom: AppTokens.space3),
                   child: AvoidHabitCard(
                     habit: habit,
-                    reelsToday: reelsToday,
+                    screenMinutesToday: habit.isScreenTimeHabit
+                        ? screenTimeOn(habit, screenUsage, DateTime.now())
+                        : null,
                     onTap: () => _openDetail(habit),
                     onSlip: () => toggleSlipWithConfirm(
                       context,
@@ -273,6 +275,8 @@ class _GreetingHeader extends ConsumerWidget {
             ],
           ),
         ),
+        const AssistantButton(),
+        const SizedBox(width: AppTokens.space3),
         const _ProfileAvatar(),
       ],
     );

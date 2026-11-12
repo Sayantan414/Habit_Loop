@@ -3,13 +3,12 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../data/models/habit.dart';
 import '../data/repositories/habit_repository.dart';
-import '../features/reels/reels_apps.dart';
 import 'services/notification_service.dart';
-import 'services/reels_service.dart';
+import 'screen_time.dart';
+import 'services/usage_service.dart';
 import 'services/settings_service.dart';
 import 'services/sound_service.dart';
 import 'services/secret_store.dart';
@@ -215,12 +214,19 @@ final dictationLocaleProvider =
   return DictationLocaleNotifier(ref.watch(settingsServiceProvider));
 });
 
+/// The usage read by the last [HabitsNotifier.syncScreenTimeHabits], as
+/// `{ 'yyyy-MM-dd': { package: minutes } }`, so screen-time habit cards can
+/// show today's minutes without asking Android again.
+final screenTimeUsageProvider =
+    StateProvider<Map<String, Map<String, int>>>((ref) => const {});
+
 class HabitsNotifier extends StateNotifier<List<Habit>> {
   HabitsNotifier(this._repo, this._todoRepo, this._noteRepo, this._ref) : super(_repo.getAll()) {
     WidgetService.updateHabits(state);
     NotificationService.instance.syncAll(state);
-    _publishReelsTarget();
-    syncReelsHabits();
+    _cleanUpQuitHabits();
+    syncScreenTimeHabits();
+    _publishScreenTimeLimits();
   }
 
   final HabitRepository _repo;
@@ -232,62 +238,77 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     state = _repo.getAll();
     WidgetService.updateHabits(state);
     NotificationService.instance.syncAll(state);
-    _publishReelsTarget();
+    _publishScreenTimeLimits();
   }
 
-  /// Re-plans reminders and republishes the home screen widget, e.g. when the
-  /// app returns to the foreground on a new day. Also catches up reels habits
-  /// with what the counter recorded while the app was closed.
-  void refreshReminders() {
-    NotificationService.instance.syncAll(state);
-    WidgetService.updateHabits(state);
-    syncReelsHabits();
-  }
-
-  /// How far back reels counts are kept natively (ReelsStore.KEEP_DAYS).
-  static const _reelsHistoryDays = 60;
-
-  List<Habit> get _runningReelsHabits => state
-      .where((h) => h.isReelsHabit && !h.archived && !h.isPaused && !h.isFinished)
-      .toList();
-
-  /// Tells the counter service the strictest running reels target, so it can
-  /// alert the moment the user goes over it (0 = no reels habit).
-  void _publishReelsTarget() {
-    final targets = _runningReelsHabits.map((h) => h.reelsTarget!);
-    ReelsService.setHabitTarget(
-      targets.isEmpty ? 0 : targets.reduce((a, b) => a < b ? a : b),
+  /// Keeps the native "minutes left" alerts in step with the running
+  /// screen-time habits (none once they're paused, archived or finished).
+  void _publishScreenTimeLimits() {
+    UsageService.setAlertLimits(
+      _runningScreenTimeHabits,
     ).catchError((Object _) {});
   }
 
-  /// Marks every day over target as a slip, and clears slips on days that
-  /// are back under it (counts only grow, but this keeps slips exactly in
-  /// line with the counter). Days older than the counter's history keep
-  /// whatever was recorded.
-  Future<void> syncReelsHabits() async {
-    final habits = _runningReelsHabits;
+  /// Re-plans reminders and republishes the home screen widget, e.g. when the
+  /// app returns to the foreground on a new day. Also catches up
+  /// screen-time habits with today's usage so far.
+  void refreshReminders() {
+    NotificationService.instance.syncAll(state);
+    WidgetService.updateHabits(state);
+    syncScreenTimeHabits();
+  }
+
+  /// Brings older Quit habits in line with what the app supports now:
+  /// habits that tracked reels (the counter is gone) become ordinary Quit
+  /// habits, keeping every slip it logged, and Quit habits lose their
+  /// reminders, which only Build habits have.
+  Future<void> _cleanUpQuitHabits() async {
+    final stale = _repo
+        .getAll()
+        .where(
+          (h) =>
+              h.reelsTarget != null || (h.isBad && h.reminderTimes.isNotEmpty),
+        )
+        .toList();
+    if (stale.isEmpty) return;
+    for (final habit in stale) {
+      await NotificationService.instance.clearToday(habit);
+      habit
+        ..reelsTarget = null
+        ..reminderTimes = habit.isBad ? [] : habit.reminderTimes;
+      await _repo.update(habit);
+    }
+    if (mounted) _refresh();
+  }
+
+  List<Habit> get _runningScreenTimeHabits => state
+      .where((h) =>
+          h.isScreenTimeHabit && !h.archived && !h.isPaused && !h.isFinished)
+      .toList();
+
+  /// Logs a slip on every day a screen-time habit went over its limit and
+  /// clears it on days back under (e.g. after the limit was raised). See
+  /// [screenTimeSlips] for which days are judged. Does nothing while Usage
+  /// access is off, so missing data never wipes recorded slips.
+  Future<void> syncScreenTimeHabits() async {
+    final habits = _runningScreenTimeHabits;
     if (habits.isEmpty) return;
 
-    final Map<String, Map<String, int>> counts;
+    final Map<String, Map<String, int>> usage;
     try {
-      counts = await ReelsService.counts(days: _reelsHistoryDays);
+      usage = await UsageService.dailyUsage(
+        habits.expand((h) => h.screenTimeApps).toSet(),
+        days: screenTimeHistoryDays,
+      );
     } on PlatformException {
       return;
     }
-    final now = DateTime.now();
-    final oldest = DateTime(now.year, now.month, now.day - (_reelsHistoryDays - 1));
+    if (!mounted) return;
+    _ref.read(screenTimeUsageProvider.notifier).state = usage;
 
     var changed = false;
     for (final habit in habits) {
-      final target = habit.reelsTarget!;
-      final slips = habit.slipDays.toSet();
-      for (var day = 1; day <= habit.todayDayNumber; day++) {
-        final date = habit.dateOfDay(day);
-        if (date.isBefore(oldest)) continue;
-        final total = (counts[ReelsState.dayKey(date)] ?? const {}).values
-            .fold(0, (sum, c) => sum + c);
-        total > target ? slips.add(day) : slips.remove(day);
-      }
+      final slips = screenTimeSlips(habit, usage);
       if (!setEquals(slips, habit.slipDays.toSet())) {
         habit.slipDays = slips.toList()..sort();
         await _repo.update(habit);
@@ -297,7 +318,7 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     if (changed && mounted) _refresh();
   }
 
-  Future<void> addHabit({
+  Future<Habit> addHabit({
     required String title,
     required int totalDays,
     required DateTime startDate,
@@ -306,7 +327,8 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
     List<int> reminderTimes = const [],
     bool isBad = false,
     bool isStrict = false,
-    int? reelsTarget,
+    int? screenTimeLimit,
+    List<String> screenTimeApps = const [],
   }) async {
     final habit = Habit(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -315,14 +337,16 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
       startDate: startDate,
       colorValue: colorValue,
       isFixed: isFixed,
-      reminderTimes: reminderTimes.toList()..sort(),
+      reminderTimes: isBad ? [] : (reminderTimes.toList()..sort()),
       isBad: isBad,
       isStrict: isBad && isStrict,
-      reelsTarget: isBad ? reelsTarget : null,
+      screenTimeLimit: isBad ? screenTimeLimit : null,
+      screenTimeApps: isBad ? screenTimeApps.toList() : null,
     );
     await _repo.add(habit);
     _refresh();
-    if (habit.isReelsHabit) await syncReelsHabits();
+    if (habit.isScreenTimeHabit) await syncScreenTimeHabits();
+    return habit;
   }
 
   Future<void> toggleDay(Habit habit, int dayNumber) async {
@@ -337,15 +361,29 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
 
   /// Logs or removes a slip for a bad habit. Any day up to today can be
   /// corrected, so a forgotten slip can still be recorded afterwards.
-  /// Reels habits are skipped: their slips come from the counter only.
+  /// Screen-time habits are skipped: their slips come from usage stats only.
   Future<void> toggleSlip(Habit habit, int dayNumber) async {
     if (!habit.isBad ||
-        habit.isReelsHabit ||
+        habit.isScreenTimeHabit ||
         dayNumber < 1 ||
         dayNumber > habit.todayDayNumber) {
       return;
     }
     await _repo.toggleSlip(habit, dayNumber);
+    _refresh();
+  }
+
+  /// Sets check-ins and slips directly. The assistant checks in with it
+  /// (never un-checking by accident) and puts days back on Undo.
+  Future<void> setDays(
+    Habit habit, {
+    required List<int> completedDays,
+    required List<int> slipDays,
+  }) async {
+    habit
+      ..completedDays = completedDays.toList()
+      ..slipDays = slipDays.toList();
+    await _repo.update(habit);
     _refresh();
   }
 
@@ -362,15 +400,16 @@ class HabitsNotifier extends StateNotifier<List<Habit>> {
 
   Future<void> setReminderTimes(Habit habit, List<int> minutes) async {
     await NotificationService.instance.clearToday(habit);
-    habit.reminderTimes = minutes.toSet().toList()..sort();
+    // Quit habits have no reminders.
+    habit.reminderTimes = habit.isBad ? [] : (minutes.toSet().toList()..sort());
     await updateHabit(habit);
   }
 
   Future<void> updateHabit(Habit habit) async {
     await _repo.update(habit);
     _refresh();
-    // A changed target or start date moves which days are over the target.
-    if (habit.isReelsHabit) await syncReelsHabits();
+    // A changed limit, app list or start date moves which days are over it.
+    if (habit.isScreenTimeHabit) await syncScreenTimeHabits();
   }
 
   Future<void> deleteHabit(String id) async {
@@ -476,13 +515,14 @@ class TodosNotifier extends StateNotifier<List<Todo>> {
     WidgetService.updateTodos(state);
   }
 
-  Future<void> addTodo(String title) async {
+  Future<Todo> addTodo(String title) async {
     final todo = Todo(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       title: title,
     );
     await _repo.add(todo);
     _refresh();
+    return todo;
   }
 
   Future<void> toggle(Todo todo) async {
@@ -610,6 +650,12 @@ class NotesNotifier extends StateNotifier<List<Note>> {
     _refresh();
   }
 
+  /// Puts a deleted note back, e.g. on Undo.
+  Future<void> restoreNote(Note note) async {
+    await _repo.add(note);
+    _refresh();
+  }
+
   List<Map<String, dynamic>> exportToJsonList() => _repo.exportToJsonList();
 
   Future<void> importFromJsonList(List<dynamic> list) async {
@@ -637,112 +683,4 @@ final filteredNotesProvider = Provider<List<Note>>((ref) {
     return note.title.toLowerCase().contains(query) ||
         note.content.toLowerCase().contains(query);
   }).toList();
-});
-
-/// Snapshot of the native reels counter. Counts live in the Android service,
-/// so this is refreshed on demand (screen open, app resume) rather than kept
-/// live.
-class ReelsState {
-  const ReelsState({
-    this.loading = true,
-    this.serviceEnabled = false,
-    this.installed = const {},
-    this.selected = const {},
-    this.counts = const {},
-    this.remindEvery = 0,
-    this.log = const [],
-  });
-
-  final bool loading;
-  final bool serviceEnabled;
-  final Set<String> installed;
-  final Set<String> selected;
-
-  /// `{ 'yyyy-MM-dd': { package: count } }`, last 7 days.
-  final Map<String, Map<String, int>> counts;
-
-  /// Reels in a row before the doomscrolling reminder; 0 = off.
-  final int remindEvery;
-  final List<String> log;
-
-  static String dayKey(DateTime day) => DateFormat('yyyy-MM-dd').format(day);
-
-  Map<String, int> countsOn(DateTime day) => counts[dayKey(day)] ?? const {};
-
-  int totalOn(DateTime day) =>
-      countsOn(day).values.fold(0, (sum, count) => sum + count);
-
-  ReelsState copyWith({Set<String>? selected, int? remindEvery}) => ReelsState(
-        loading: loading,
-        serviceEnabled: serviceEnabled,
-        installed: installed,
-        selected: selected ?? this.selected,
-        counts: counts,
-        remindEvery: remindEvery ?? this.remindEvery,
-        log: log,
-      );
-}
-
-class ReelsNotifier extends StateNotifier<ReelsState> {
-  ReelsNotifier() : super(const ReelsState()) {
-    refresh();
-  }
-
-  /// Reminder interval used when the user first switches it on.
-  static const defaultRemindEvery = 10;
-
-  Future<void> refresh() async {
-    try {
-      final results = await Future.wait([
-        ReelsService.isServiceEnabled(),
-        ReelsService.installedApps(
-          reelsApps.map((a) => a.packageName).toList(),
-        ),
-        ReelsService.selectedApps(),
-        ReelsService.counts(days: 7),
-        ReelsService.remindEvery(),
-        ReelsService.detectionLog(),
-      ]);
-      if (!mounted) return;
-      // Drop apps no longer offered (e.g. Facebook Lite) from the selection.
-      final saved = results[2] as Set<String>;
-      final selected = saved.where((id) => reelsAppFor(id) != null).toSet();
-      if (selected.length != saved.length) {
-        await ReelsService.setSelectedApps(selected);
-      }
-      state = ReelsState(
-        loading: false,
-        serviceEnabled: results[0] as bool,
-        installed: results[1] as Set<String>,
-        selected: selected,
-        counts: results[3] as Map<String, Map<String, int>>,
-        remindEvery: results[4] as int,
-        log: results[5] as List<String>,
-      );
-    } on PlatformException {
-      if (mounted) state = const ReelsState(loading: false);
-    }
-  }
-
-  Future<void> setAppSelected(String packageName, bool selected) async {
-    final next = {...state.selected};
-    selected ? next.add(packageName) : next.remove(packageName);
-    state = state.copyWith(selected: next);
-    await ReelsService.setSelectedApps(next);
-  }
-
-  /// Sets how many reels in a row trigger the reminder (0 turns it off).
-  Future<void> setRemindEvery(int reels) async {
-    state = state.copyWith(remindEvery: reels);
-    await ReelsService.setRemindEvery(reels);
-  }
-
-  Future<void> clearLog() async {
-    await ReelsService.clearDetectionLog();
-    await refresh();
-  }
-}
-
-final reelsProvider = StateNotifierProvider<ReelsNotifier, ReelsState>((ref) {
-  return ReelsNotifier();
 });

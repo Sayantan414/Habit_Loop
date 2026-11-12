@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/screen_time.dart';
 import '../../core/services/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/habit.dart';
@@ -32,10 +33,19 @@ class HabitDetailScreen extends ConsumerStatefulWidget {
 
 class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1500),
-  )..repeat(reverse: true);
+  // Created up front: a Quit habit never reads it while building, and a lazy
+  // `late final` would then be created for the first time in dispose(), when
+  // the element is already deactivated and can't look up its TickerMode.
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+  }
 
   @override
   void dispose() {
@@ -125,6 +135,15 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                     _HeroHeader(habit: habit, color: color),
                     const SizedBox(height: AppTokens.space4),
                     _StatRow(habit: habit, color: color),
+                    if (habit.isScreenTimeHabit) ...[
+                      const SizedBox(height: AppTokens.space6),
+                      const SectionHeader(title: 'Last 7 days'),
+                      _ScreenTimeWeek(
+                        habit: habit,
+                        usage: ref.watch(screenTimeUsageProvider),
+                        color: color,
+                      ),
+                    ],
                     if (habit.isPaused) ...[
                       const SizedBox(height: AppTokens.space4),
                       _PausedBanner(
@@ -147,7 +166,8 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                       const SizedBox(height: AppTokens.space4),
                       _ExtensionBanner(habit: habit),
                     ],
-                    if (!habit.isFinished &&
+                    if (!habit.isBad &&
+                        !habit.isFinished &&
                         !habit.isPaused &&
                         NotificationService.instance.isSupported) ...[
                       const SizedBox(height: AppTokens.space6),
@@ -198,10 +218,10 @@ class _HabitDetailScreenState extends ConsumerState<HabitDetailScreen>
                           // Pulsing would invite a tap, and for a bad habit
                           // a tap on today means logging a slip.
                           pulse: habit.isBad ? null : _pulse,
-                          onTap: habit.isReelsHabit
+                          onTap: habit.isScreenTimeHabit
                               ? () => _nudge(
                                   'Slips are logged automatically on days '
-                                  'over ${habit.reelsTarget} reels.',
+                                  'over ${habit.screenTimeLimit} min.',
                                 )
                               : habit.isBad && !habit.isPaused
                               ? (dayNumber <= today
@@ -469,10 +489,10 @@ class _HeroHeader extends StatelessWidget {
                         color: p.warning,
                         bold: true,
                       ),
-                    if (habit.isReelsHabit)
+                    if (habit.isScreenTimeHabit)
                       _HeroMeta(
-                        icon: Icons.slow_motion_video_rounded,
-                        label: 'Max ${habit.reelsTarget} reels/day',
+                        icon: Icons.hourglass_bottom_rounded,
+                        label: 'Max ${habit.screenTimeLimit} min/day',
                         color: p.textSecondary,
                       ),
                     _HeroMeta(
@@ -534,6 +554,92 @@ class _HeroMeta extends StatelessWidget {
               ),
         ),
       ],
+    );
+  }
+}
+
+/// Minutes per day on a screen-time habit's apps over the last week, newest
+/// first, each against the daily limit. Days before the habit started are
+/// left out.
+class _ScreenTimeWeek extends StatelessWidget {
+  const _ScreenTimeWeek({
+    required this.habit,
+    required this.usage,
+    required this.color,
+  });
+
+  final Habit habit;
+  final Map<String, Map<String, int>> usage;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final theme = Theme.of(context);
+    final limit = habit.screenTimeLimit!;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = habit.dateOfDay(1);
+    final days = [
+      for (var i = 0; i < screenTimeHistoryDays; i++)
+        DateTime(today.year, today.month, today.day - i),
+    ].where((d) => !d.isBefore(start)).toList();
+
+    return GlassCard(
+      padding: const EdgeInsets.all(AppTokens.space4),
+      child: Column(
+        children: [
+          for (final day in days)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Builder(
+                builder: (context) {
+                  final minutes = screenTimeOn(habit, usage, day);
+                  final over = minutes > limit;
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: 64,
+                        child: Text(
+                          day == today
+                              ? 'Today'
+                              : DateFormat('EEE d').format(day),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: p.textSecondary,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: ProgressBar(
+                          value: (minutes / limit).clamp(0.0, 1.0),
+                          color: over ? p.danger : color,
+                          height: 6,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 64,
+                        child: Text(
+                          '$minutes min',
+                          textAlign: TextAlign.end,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: over ? p.danger : p.textPrimary,
+                            fontFeatures: AppTypography.tabular,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: AppTokens.space2),
+          Text(
+            'Limit $limit min a day. Android keeps about a week of usage, '
+            'so older days aren’t shown.',
+            style: theme.textTheme.bodySmall?.copyWith(color: p.textTertiary),
+          ),
+        ],
+      ),
     );
   }
 }

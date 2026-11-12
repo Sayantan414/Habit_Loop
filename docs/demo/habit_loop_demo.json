@@ -1,0 +1,292 @@
+{
+  "habits": [
+    {
+      "id": "demo-walk",
+      "title": "Morning walk",
+      "totalDays": 21,
+      "startDate": "2026-11-03T00:00:00",
+      "colorValue": 4279286145,
+      "createdAt": "2026-11-03T00:00:00",
+      "completedDays": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "archived": false,
+      "isFixed": false,
+      "reminderTimes": [
+        420
+      ],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": false,
+      "slipDays": [],
+      "isStrict": false,
+      "screenTimeLimit": null,
+      "screenTimeApps": []
+    },
+    {
+      "id": "demo-read",
+      "title": "Read 20 pages",
+      "totalDays": 30,
+      "startDate": "2026-10-29T00:00:00",
+      "colorValue": 4287323382,
+      "createdAt": "2026-10-29T00:00:00",
+      "completedDays": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "archived": false,
+      "isFixed": false,
+      "reminderTimes": [
+        1290
+      ],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": false,
+      "slipDays": [],
+      "isStrict": false,
+      "screenTimeLimit": null,
+      "screenTimeApps": []
+    },
+    {
+      "id": "demo-water",
+      "title": "Drink 8 glasses of water",
+      "totalDays": 21,
+      "startDate": "2026-11-06T00:00:00",
+      "colorValue": 4282090230,
+      "createdAt": "2026-11-06T00:00:00",
+      "completedDays": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "archived": false,
+      "isFixed": false,
+      "reminderTimes": [],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": false,
+      "slipDays": [],
+      "isStrict": false,
+      "screenTimeLimit": null,
+      "screenTimeApps": []
+    },
+    {
+      "id": "demo-meditate",
+      "title": "Meditate 10 minutes",
+      "totalDays": 60,
+      "startDate": "2026-10-14T00:00:00",
+      "colorValue": 4278630100,
+      "createdAt": "2026-10-14T00:00:00",
+      "completedDays": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "archived": false,
+      "isFixed": false,
+      "reminderTimes": [
+        390
+      ],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": false,
+      "slipDays": [],
+      "isStrict": false,
+      "screenTimeLimit": null,
+      "screenTimeApps": []
+    },
+    {
+      "id": "demo-early",
+      "title": "Wake up at 6 AM",
+      "totalDays": 21,
+      "startDate": "2026-10-10T00:00:00",
+      "colorValue": 4294286859,
+      "createdAt": "2026-10-10T00:00:00",
+      "completedDays": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "archived": false,
+      "isFixed": true,
+      "reminderTimes": [],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": false,
+      "slipDays": [],
+      "isStrict": false,
+      "screenTimeLimit": null,
+      "screenTimeApps": []
+    },
+    {
+      "id": "demo-sugar",
+      "title": "No sugar",
+      "totalDays": 30,
+      "startDate": "2026-10-31T00:00:00",
+      "colorValue": 4294197086,
+      "createdAt": "2026-10-31T00:00:00",
+      "completedDays": [],
+      "archived": false,
+      "isFixed": false,
+      "reminderTimes": [],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": true,
+      "slipDays": [
+        5
+      ],
+      "isStrict": false,
+      "screenTimeLimit": null,
+      "screenTimeApps": []
+    },
+    {
+      "id": "demo-screen",
+      "title": "Instagram + YouTube under 45 min",
+      "totalDays": 21,
+      "startDate": "2026-11-05T00:00:00",
+      "colorValue": 4294286859,
+      "createdAt": "2026-11-05T00:00:00",
+      "completedDays": [],
+      "archived": false,
+      "isFixed": false,
+      "reminderTimes": [],
+      "isPaused": false,
+      "pausedAt": null,
+      "isBad": true,
+      "slipDays": [
+        3
+      ],
+      "isStrict": false,
+      "screenTimeLimit": 45,
+      "screenTimeApps": [
+        "com.instagram.android",
+        "com.google.android.youtube"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "demo-todo-1",
+      "title": "Buy groceries: milk, eggs, bread",
+      "isCompleted": false,
+      "createdAt": "2026-11-12T09:15:00"
+    },
+    {
+      "id": "demo-todo-2",
+      "title": "Call the electrician about the fan",
+      "isCompleted": false,
+      "createdAt": "2026-11-11T18:40:00"
+    },
+    {
+      "id": "demo-todo-3",
+      "title": "Finish the RAG project README",
+      "isCompleted": false,
+      "createdAt": "2026-11-09T22:05:00"
+    },
+    {
+      "id": "demo-todo-4",
+      "title": "Book train tickets for the Darjeeling trip",
+      "isCompleted": false,
+      "createdAt": "2026-11-03T20:30:00"
+    },
+    {
+      "id": "demo-todo-5",
+      "title": "Pay the electricity bill",
+      "isCompleted": true,
+      "createdAt": "2026-11-08T10:00:00"
+    },
+    {
+      "id": "demo-todo-6",
+      "title": "Renew gym membership",
+      "isCompleted": true,
+      "createdAt": "2026-11-06T07:45:00"
+    }
+  ],
+  "notes": [
+    {
+      "id": "demo-note-1",
+      "title": "Darjeeling trip plan",
+      "content": "Dates: 20–24 Dec\n\n- Train: Kolkata → NJP, Darjeeling Mail\n- Stay: homestay near the Mall Road\n- Tiger Hill sunrise on day 2\n- Toy train ride to Ghum\n- Try momos at Glenary's\n\nBudget: around ₹18,000 for two",
+      "createdAt": "2026-11-03T20:35:00",
+      "updatedAt": "2026-11-10T21:10:00"
+    },
+    {
+      "id": "demo-note-2",
+      "title": "Books to read",
+      "content": "1. Atomic Habits — James Clear (reading now)\n2. Designing Data-Intensive Applications\n3. Deep Work — Cal Newport\n4. The Pragmatic Programmer",
+      "createdAt": "2026-10-29T22:00:00",
+      "updatedAt": "2026-11-07T22:30:00"
+    },
+    {
+      "id": "demo-note-3",
+      "title": "Side project ideas",
+      "content": "- FAQ chatbot with RAG (Node + pgvector)\n- Resume parser with structured JSON output\n- Flutter notes app with semantic search\n- URL shortener with rate limiting and k6 load tests",
+      "createdAt": "2026-10-23T23:15:00",
+      "updatedAt": "2026-11-11T23:00:00"
+    }
+  ]
+}

@@ -4,6 +4,31 @@ A Flutter app for building good habits, quitting bad ones, and keeping your
 to-dos and notes in one place, with an AI assistant you can talk to in English
 or Bengali. Everything is stored on the phone; nothing needs an account.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/today_screen_1.jpg" width="240" alt="Today screen with daily progress"><br><sub>Today: daily progress and habits</sub></td>
+    <td align="center"><img src="docs/screenshots/today_screen_2.jpg" width="240" alt="Quit and screen-time habits on the Today screen"><br><sub>Quit and screen-time habits</sub></td>
+    <td align="center"><img src="docs/screenshots/home_screen_widget.jpg" width="240" alt="Home screen widget"><br><sub>Home screen widget</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/quit_habit_add.jpg" width="240" alt="Creating a screen-time habit"><br><sub>New screen-time habit</sub></td>
+    <td align="center"><img src="docs/screenshots/screentime_details_page.jpg" width="240" alt="Screen-time habit detail with the last 7 days"><br><sub>Last 7 days of screen time</sub></td>
+    <td align="center"><img src="docs/screenshots/build_habit_details.jpg" width="240" alt="Build habit detail with the challenge grid"><br><sub>Challenge grid and reminders</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/assistant_report.jpg" width="240" alt="Assistant weekly report"><br><sub>Assistant: weekly report</sub></td>
+    <td align="center"><img src="docs/screenshots/assistant_add_todo.jpg" width="240" alt="Assistant adding a to-do"><br><sub>Assistant: one request, two actions</sub></td>
+    <td align="center"><img src="docs/screenshots/build_habit_add.jpg" width="240" alt="Creating a build habit"><br><sub>New build habit</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/todos.jpg" width="240" alt="To-do list"><br><sub>To-dos</sub></td>
+    <td align="center"><img src="docs/screenshots/notes.jpg" width="240" alt="Notes"><br><sub>Notes</sub></td>
+    <td align="center"><img src="docs/screenshots/push_notification_bar.jpg" width="240" alt="Habit reminder notification"><br><sub>Reminder with Mark as done</sub></td>
+  </tr>
+</table>
+
 ## Features
 
 ### Habits
@@ -17,6 +42,8 @@ or Bengali. Everything is stored on the phone; nothing needs an account.
   e.g. "32 / 45 min".
 - **Extended or Fixed mode**: missed days either extend the challenge or
   don't.
+- **Screen-time alerts**: a notification when a screen-time habit has 10, 5
+  and 1 minute left for the day, even while Habit Loop is closed.
 - **Pause** a habit for a break without losing progress.
 
 ### AI assistant
@@ -34,7 +61,8 @@ or Bengali. Everything is stored on the phone; nothing needs an account.
 - **To-do list** with quick capture.
 - **Notes** with auto-save and instant search.
 - **Voice dictation** in notes and the assistant.
-- **Reminders** per habit, with a "Mark as done" action on the notification.
+- **Reminders** for Build habits, with a "Mark as done" action on the
+  notification. Quit habits have no reminders.
 - **Home screen widget** showing today's habits (Android).
 - **Light, dark and system themes** from one design system
   ([docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)).
@@ -50,6 +78,9 @@ day over the habit's limit.
 - It needs **Usage access**, which you turn on once in system settings. Unlike
   an accessibility service it can't see what's on screen, so banking and
   payment apps keep working normally.
+- Alerts need no background service: each check sets one alarm for the
+  earliest moment the next threshold could be crossed (usage grows at most a
+  minute per minute), so checks are rare until the limit is close.
 - Android keeps about **7 days** of usage history, so only the last week is
   re-checked; older slips stay as they were recorded.
 - Android only; the option is hidden on other platforms.
@@ -58,7 +89,7 @@ day over the habit's limit.
 
 | Permission | Why |
 | --- | --- |
-| Notifications, exact alarms | Habit reminders |
+| Notifications, exact alarms | Habit reminders and screen-time alerts |
 | Microphone | Voice dictation (asked the first time you tap the mic) |
 | Internet | The AI assistant and online speech recognition |
 | Usage access | Screen-time habits (asked only when you create one) |
